@@ -36,7 +36,7 @@ try:
     import matplotlib.pyplot as plt
     print(f"Other required libraries (xarray {xr.__version__}, numpy {np.__version__}, matplotlib) loaded.")
 except ImportError as e:
-    print(f"\nCRITICAL ERROR: Missing dependent library: {e}")
+    print(f"\nCRITICAL ERROR: Missing dependency library: {e}")
     print("Make sure you have installed xarray, numpy, matplotlib.")
     exit()
 
@@ -109,6 +109,7 @@ try:
     print(f"  Dimensions: Lines={lines}, Samples={samples}, Bands={bands}")
 
     print("  Extracting wavelengths...")
+    # ... (wavelength extraction logic) ...
     source = "N/A"
     if hasattr(img_spectral, 'bands') and hasattr(img_spectral.bands, 'centers') and img_spectral.bands.centers:
         wavelengths = np.array(img_spectral.bands.centers, dtype=np.float32)

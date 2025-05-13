@@ -14,19 +14,19 @@ import os
 # Make sure this file exists!
 netcdf_file_path = 'frt000144ff_07_sr164j_mtr3_xarray_dask.nc' # Modify if needed
 
-# --- File Existence Check ---
+# --- Check File Existence ---
 print(f"Checking NetCDF file existence: '{netcdf_file_path}'")
 if not os.path.exists(netcdf_file_path):
     print(f"--> ERROR: NetCDF file not found.")
     print(f"   Searched path: {os.path.abspath(netcdf_file_path)}")
     print(f"   Make sure the previous script was executed successfully")
-    print(f"   and the filename is correct.")
+    print(f"   and that the filename is correct.")
     exit()
 else:
     print("--> OK: NetCDF file found.")
 
 
-# --- Loading xarray Data from NetCDF ---
+# --- Load xarray Data from NetCDF ---
 data_xr = None
 try:
     print(f"\nLoading DataArray from '{netcdf_file_path}'...")
@@ -84,7 +84,7 @@ if data_xr is not None:
         print(f"--> ERROR during demonstration 1: {type(e).__name__}: {e}")
 
 
-# --- Demonstration 2: Plot spatial image (slice at one wavelength) ---
+# --- Demonstration 2: Plot a spatial image (slice at one wavelength) ---
 if data_xr is not None:
     print("\n--- Demonstration 2: Image at a specific wavelength ---")
     try:
@@ -124,7 +124,7 @@ if data_xr is not None:
         print(f"--> ERROR during demonstration 2: {type(e).__name__}: {e}")
 
 
-# --- Demonstration 3: Calculate and plot mean spectrum ---
+# --- Demonstration 3: Calculate and plot the mean spectrum ---
 if data_xr is not None:
     print("\n--- Demonstration 3: Mean spectrum of the entire image ---")
     try:

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Script to read a CRISM spectral cube (ENVI-like format),
-convert it into an xarray.DataArray (potentially using Dask for
+convert it to an xarray.DataArray (potentially using Dask for
 memory efficiency and parallelism) and save it in NetCDF format.
 
 Version with Wrapper class for Dask/Xarray compatibility.
@@ -15,65 +15,65 @@ import matplotlib.pyplot as plt
 import warnings # To handle specific warnings
 import traceback # For more detailed debugging
 
-# Import from the 'spectral' library
+# Import from 'spectral' library
 try:
     import spectral
     from spectral import open_image
-    print(f"Spectralpy library (version: {spectral.__version__}) imported successfully.")
+    print(f"Spectralpy library (version: {spectral.__version__}) successfully imported.")
 except ImportError:
     print("\nCRITICAL ERROR: 'spectral' library not found.")
-    print("Instructions to install: python -m pip install spectralpy")
+    print("Installation instructions: python -m pip install spectralpy")
     exit()
 except Exception as e:
     print(f"Unexpected error during spectral import: {e}")
     exit()
 
-# Import other necessary libraries
+# Import other required libraries
 try:
     import xarray as xr
     import numpy as np
     import matplotlib.pyplot as plt
     print(f"Other required libraries (xarray {xr.__version__}, numpy {np.__version__}, matplotlib) loaded.")
 except ImportError as e:
-    print(f"\nCRITICAL ERROR: Missing dependency library: {e}")
+    print(f"\nCRITICAL ERROR: Missing dependent library: {e}")
     exit()
 
 # Import NetCDF engine
 try:
     import netCDF4
-    print(f"NetCDF engine (netCDF4) imported successfully.")
+    print(f"NetCDF engine (netCDF4) successfully imported.")
     NETCDF_ENGINE = 'netcdf4'
 except ImportError:
-    print("\nWARNING: 'netCDF4' library not found. Install it with: python -m pip install netCDF4")
+    print("\nWARNING: 'netCDF4' library not found. Install with: python -m pip install netCDF4")
     NETCDF_ENGINE = None
 
 # --- Dask Import ---
 try:
     import dask.array as da
     from dask.diagnostics import ProgressBar
-    print(f"Dask library imported successfully.")
+    print(f"Dask library successfully imported.")
     USE_DASK = True
 except ImportError:
-    print("\nWARNING: 'dask' library not found. Install it with: python -m pip install \"dask[complete]\"")
+    print("\nWARNING: 'dask' library not found. Install with: python -m pip install \"dask[complete]\"")
     USE_DASK = False
 
-# --- Definition of Wrapper Class for Spectral Object ---
+# --- Spectral Object Wrapper Class Definition ---
 class SpectralArrayWrapper:
     """
     A wrapper to make the spectral.Image object (like BsqFile)
     more compatible with interfaces expecting ndim.
-    Delegates shape, dtype, and __getitem__ to the underlying object.
+    Delegates shape, dtype and __getitem__ to the underlying object.
     """
     def __init__(self, spectral_image):
         self._spectral_image = spectral_image
         self.shape = spectral_image.shape
         self.dtype = spectral_image.dtype
-        # Adds the missing attribute 'ndim'
+        # Add missing 'ndim' attribute
         self.ndim = len(self.shape)
-        print(f"  [Wrapper] Wrapper created: shape={self.shape}, dtype={self.dtype}, ndim={self.ndim}")
+        print(f"  [Wrapper] Created wrapper: shape={self.shape}, dtype={self.dtype}, ndim={self.ndim}")
 
     def __getitem__(self, key):
-        # Delegates indexing/slicing to the original object
+        # Delegate indexing/slicing to original object
         # print(f"  [Wrapper] __getitem__ called with key: {key}") # Debug (can be noisy)
         return self._spectral_image[key]
 
@@ -92,7 +92,7 @@ print(f"Dask Chunks configuration (if used): {CHUNKS}")
 # --- Check Header File Existence ---
 print(f"\nChecking header file existence: '{hdr_file_path}'")
 if not os.path.exists(hdr_file_path):
-    print(f"--> ERROR: The specified header file was NOT found: {os.path.abspath(hdr_file_path)}")
+    print(f"--> ERROR: Specified header file NOT found: {os.path.abspath(hdr_file_path)}")
     exit()
 else:
     print("--> OK: Header file found.")
@@ -111,7 +111,7 @@ except FileNotFoundError:
     img_file_expected = hdr_file_path.replace('.hdr', '.img')
     if not os.path.exists(img_file_expected): img_file_expected = hdr_file_path.replace('.hdr', '') # Try without extension
     if not os.path.exists(img_file_expected):
-         print(f"--> ERROR: Unable to find the associated image file (.img or without extension) for '{hdr_file_path}'")
+         print(f"--> ERROR: Unable to find image file (.img or without extension) associated with '{hdr_file_path}'")
     else:
          print(f"--> ERROR: Unexplained FileNotFoundError during opening.")
     exit()
@@ -128,9 +128,9 @@ data_description = 'Spectral Data Cube'
 original_metadata = {}
 
 try:
-    print("\nExtracting metadata from the spectral object...")
+    print("\nExtracting metadata from spectral object...")
     if not hasattr(img_spectral, 'shape') or not hasattr(img_spectral, 'dtype'):
-        print("--> ERROR: The spectral object does not have 'shape' or 'dtype' attributes.")
+        print("--> ERROR: Spectral object does not have 'shape' or 'dtype' attributes.")
         exit()
 
     lines, samples, bands = img_spectral.shape
@@ -191,20 +191,19 @@ try:
         print("--> OK: Metadata copied.")
 
 except Exception as e:
-    print(f"\n--> UNEXPECTED ERROR during metadata extraction: {type(e).__name__}: {e}")
+    print(f"\n--> Unexpected error during metadata extraction: {type(e).__name__}: {e}")
     traceback.print_exc()
     exit()
 
-
-# --- Creation of xarray DataArray (with or without Dask) ---
+# --- Create xarray DataArray (with or without Dask) ---
 data_xr = None
 try:
     print("\nCreating xarray DataArray...")
     if wavelengths is None: raise ValueError("'wavelengths' not defined.")
     if img_spectral is None: raise ValueError("'img_spectral' object not available.")
 
-    # *** KEY CHANGE: Create the wrapper around img_spectral ***
-    print("  Creating wrapper for the spectral object...")
+    # *** KEY MODIFICATION: Create wrapper around img_spectral ***
+    print("  Creating wrapper for spectral object...")
     try:
         wrapped_spectral = SpectralArrayWrapper(img_spectral)
         print(f"--> OK: Wrapper created. Type: {type(wrapped_spectral)}")
@@ -213,17 +212,17 @@ try:
         traceback.print_exc()
         exit()
 
-    # Use the WRAPPER with Dask or directly with Xarray (if not using Dask)
+    # Use WRAPPER with Dask or directly with Xarray (if not using Dask)
     if USE_DASK:
-        print(f"\n  Using Dask on the wrapped object with chunks: {CHUNKS}")
+        print(f"\n  Using Dask on wrapped object with chunks: {CHUNKS}")
         try:
-            # Pass the WRAPPED object to da.from_array.
+            # Pass WRAPPED object to da.from_array.
             data_array_backend = da.from_array(
-                wrapped_spectral,                   # The wrapped object
+                wrapped_spectral,                   # Wrapped object
                 chunks=CHUNKS,
                 name=f"spectral-data-{base_name}"
             )
-            print(f"--> OK: Dask array (lazy) created from wrapper.")
+            print(f"--> OK: Dask array created (lazy) from wrapper.")
             print(f"    Dask array info: Chunks={data_array_backend.chunksize}, Shape={data_array_backend.shape}, Dtype={data_array_backend.dtype}")
 
         except Exception as e_dask:
@@ -231,17 +230,17 @@ try:
             traceback.print_exc()
             exit()
 
-    else: # Do not use Dask
-        print("\n  Loading data into memory (NumPy) via the wrapper...")
+    else: # Don't use Dask
+        print("\n  Loading data into memory (NumPy) via wrapper...")
         try:
-            data_array_backend_raw = wrapped_spectral[:] # Use the wrapper to read all
+            data_array_backend_raw = wrapped_spectral[:] # Use wrapper to read everything
             if not isinstance(data_array_backend_raw, np.ndarray):
-                 print(f"    Warning: Read from wrapper is not ndarray ({type(data_array_backend_raw)}). Converting...")
+                 print(f"    Warning: Reading from wrapper not ndarray ({type(data_array_backend_raw)}). Converting...")
                  data_array_backend = np.array(data_array_backend_raw)
             else:
                  data_array_backend = data_array_backend_raw
             if not isinstance(data_array_backend, np.ndarray):
-                print(f"--> ERROR: Unable to obtain a NumPy array. Type: {type(data_array_backend)}")
+                print(f"--> ERROR: Unable to get NumPy array. Type: {type(data_array_backend)}")
                 exit()
             print(f"--> OK: Data loaded into NumPy. Shape: {data_array_backend.shape}, Type: {data_array_backend.dtype}")
         except Exception as e_load:
@@ -249,17 +248,16 @@ try:
              traceback.print_exc()
              exit()
 
-
-    # --- Now create the xarray DataArray using the Dask or NumPy backend ---
+    # --- Now create xarray DataArray using Dask or NumPy backend ---
     print(f"\n  Attempting to create xarray.DataArray using backend type: {type(data_array_backend)}")
     if not hasattr(data_array_backend, 'ndim') or \
        not hasattr(data_array_backend, 'shape') or \
        not hasattr(data_array_backend, 'dtype'):
-        print(f"--> INTERNAL ERROR: The 'data_array_backend' object ({type(data_array_backend)}) does not have required attributes.")
+        print(f"--> INTERNAL ERROR: 'data_array_backend' object ({type(data_array_backend)}) missing required attributes.")
         exit()
 
     data_xr = xr.DataArray(
-        data=data_array_backend, # Pass the Dask or NumPy array
+        data=data_array_backend, # Pass Dask or NumPy array
         coords={
             'line': np.arange(lines),
             'sample': np.arange(samples),
@@ -277,21 +275,20 @@ try:
     data_xr['wavelength'].attrs['long_name'] = 'Wavelength'
     data_xr['wavelength'].attrs['units'] = wavelength_units
 
-    print("--> OK: xarray DataArray created successfully!")
+    print("--> OK: xarray DataArray successfully created!")
     print("\n--- xarray DataArray Information ---")
     with xr.set_options(display_expand_data=False):
         print(data_xr)
 
 except ValueError as ve:
-     print(f"\n--> VALUE ERROR during DataArray creation: {ve}")
+     print(f"\n--> Value Error during DataArray creation: {ve}")
      exit()
 except Exception as e:
-    print(f"\n--> UNEXPECTED ERROR during DataArray creation: {type(e).__name__}: {e}")
+    print(f"\n--> Unexpected error during DataArray creation: {type(e).__name__}: {e}")
     traceback.print_exc()
     exit()
 
-
-# --- NetCDF Saving ---
+# --- NetCDF Save ---
 if data_xr is not None and NETCDF_ENGINE:
     print(f"\n--- Saving DataArray to NetCDF ({output_nc_file}) ---")
     try:
@@ -317,21 +314,20 @@ if data_xr is not None and NETCDF_ENGINE:
             with ProgressBar(): write_job.compute()
         else: write_job.compute()
 
-        print(f"--> OK: DataArray successfully saved in '{output_nc_file}'")
+        print(f"--> OK: DataArray successfully saved to '{output_nc_file}'")
 
     except ImportError:
          print(f"--> ERROR: NetCDF engine '{NETCDF_ENGINE}' not installed.")
     except Exception as e:
-        print(f"\n--> ERROR during NetCDF saving:")
+        print(f"\n--> ERROR during NetCDF save:")
         print(f"    Type: {type(e).__name__}, Msg: {e}")
-        print(f"    File: {output_nc_file}. Check permissions and disk space.")
+        print(f"    File: {output_nc_file}. Check permissions and space.")
         traceback.print_exc()
 
-elif data_xr is None: print("\nNetCDF saving skipped: DataArray not created.")
-else: print("\nNetCDF saving skipped: 'netCDF4' library not installed.")
+elif data_xr is None: print("\nNetCDF save skipped: DataArray not created.")
+else: print("\nNetCDF save skipped: 'netCDF4' library not installed.")
 
-
-# --- Plotting Example ---
+# --- Example Plotting ---
 if data_xr is not None:
     try:
         print("\n--- Example: Central pixel spectrum visualization ---")
@@ -363,6 +359,6 @@ if data_xr is not None:
 
 # --- Final Notes ---
 print("\n--- Note on auxiliary files (_if) ---")
-print("This script only loads the main data cube.")
+print("This script loads only the main data cube.")
 print("For complete analysis, consider loading auxiliary files (e.g. _if) into an xarray Dataset.")
 print("\n--- Script completed ---")
