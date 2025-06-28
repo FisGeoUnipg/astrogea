@@ -1,0 +1,336 @@
+import numpy as np
+import spectral.io.envi as envi
+import xarray as xr
+import time
+import os
+import warnings
+from typing import Optional, Dict, Any
+from .spectral_wrapper import SpectralArrayWrapper
+from .wcs_utils import parse_envi_map_info_list, create_wcs_from_parsed_info, create_wcs_header_dict
+
+def _setup_spectral_environment():
+    """Setup spectral library environment to find data files"""
+    # Add current directory and data directory to spectral search path
+    current_dir = os.getcwd()
+    data_dir = os.path.join(current_dir, "data")
+    
+    # Set SPECTRAL_DATA environment variable if not already set
+    if "SPECTRAL_DATA" not in os.environ:
+        spectral_paths = [current_dir, data_dir]
+        os.environ["SPECTRAL_DATA"] = os.pathsep.join(spectral_paths)
+    else:
+        # Add our paths to existing SPECTRAL_DATA
+        existing_paths = os.environ["SPECTRAL_DATA"].split(os.pathsep)
+        if current_dir not in existing_paths:
+            existing_paths.append(current_dir)
+        if data_dir not in existing_paths:
+            existing_paths.append(data_dir)
+        os.environ["SPECTRAL_DATA"] = os.pathsep.join(existing_paths)
+
+def _open_envi_file(base_path: str) -> Any:
+    """Open ENVI file with proper path handling"""
+    # Setup spectral environment
+    _setup_spectral_environment()
+    
+    # Remove .hdr extension if present to get base path
+    if base_path.endswith('.hdr'):
+        base_path = base_path[:-4]
+    
+    # Try different path combinations
+    hdr_path = f"{base_path}.hdr"
+    img_path = f"{base_path}.img"
+    
+    # Check if files exist
+    if not os.path.exists(hdr_path):
+        raise FileNotFoundError(f"Header file not found: {hdr_path}")
+    if not os.path.exists(img_path):
+        raise FileNotFoundError(f"Image file not found: {img_path}")
+    
+    # Use absolute paths
+    hdr_abs = os.path.abspath(hdr_path)
+    img_abs = os.path.abspath(img_path)
+    
+    return envi.open(hdr_abs, img_abs)
+
+def process_crism_file(base_sr_path: str, base_if_path: str, output_nc_path: str, use_dask: bool = False) -> xr.Dataset:
+    """
+    Process CRISM files and save them in NetCDF format with georeferencing.
+    Matches the functionality of the reference script.
+    
+    Args:
+        base_sr_path: Base path to the .hdr Surface Reflectance file (without extension)
+        base_if_path: Base path to the .hdr Incidence Factor file (without extension)
+        output_nc_path: Output NetCDF file
+        use_dask: If True, use Dask to load files for better performance with large datasets
+    
+    Returns:
+        xarray.Dataset: Processed dataset with georeferenced data
+    """
+    # Load SR (surface reflectance)
+    sr_img = _open_envi_file(base_sr_path)
+    
+    if use_dask:
+        try:
+            import dask.array as da
+            from dask.diagnostics import ProgressBar
+            
+            # Load with Dask for better performance
+            sr_data = sr_img.load()
+            sr_data_backend = da.from_array(sr_data, chunks=('auto', 'auto', -1))
+            print("   Using Dask backend for SR data")
+        except ImportError:
+            print("   Dask not available, falling back to NumPy")
+            sr_data = sr_img.load()
+            sr_data_backend = sr_data
+    else:
+        sr_data = sr_img.load()
+        sr_data_backend = sr_data
+    
+    # Extract wavelengths from SR
+    wavelengths = np.linspace(1.0, 2.5, sr_data.shape[2])  # Default wavelengths
+    wavelength_units = 'micrometers'
+    if hasattr(sr_img, 'bands') and sr_img.bands.centers:
+        wavelengths = np.array(sr_img.bands.centers, dtype=np.float32)
+        wavelength_units = sr_img.metadata.get('wavelength units', 'unknown')
+    
+    # Load IF (incidence factor)
+    if_img = _open_envi_file(base_if_path)
+    
+    if use_dask:
+        try:
+            import dask.array as da
+            # Load with Dask for better performance
+            if_data = if_img.load()
+            if_data_backend = da.from_array(if_data, chunks=('auto', 'auto', -1))
+            print("   Using Dask backend for IF data")
+        except ImportError:
+            print("   Dask not available, falling back to NumPy")
+            if_data = if_img.load()
+            if_data_backend = if_data
+    else:
+        if_data = if_img.load()
+        if_data_backend = if_data
+    
+    # Extract IF band names
+    if_band_names = [f"if_band_{i}" for i in range(if_data.shape[2])]
+    if hasattr(if_img, 'metadata') and 'band names' in if_img.metadata:
+        bn = if_img.metadata['band names']
+        if isinstance(bn, list) and len(bn) == if_data.shape[2]:
+            import re
+            if_band_names = [re.sub(r'\s*\(.*\)\s*$', '', b).strip() for b in bn]
+    
+    # Extract metadata
+    meta_sr = {k: str(v) for k, v in sr_img.metadata.items()} if hasattr(sr_img, 'metadata') else {}
+    meta_if = {k: str(v) for k, v in if_img.metadata.items()} if hasattr(if_img, 'metadata') else {}
+    
+    # Create WCS from SR metadata
+    wcs_object = None
+    wcs_header_dict = None
+    map_info_data = sr_img.metadata.get('map info', None)
+    parsed_map_info = None
+    
+    if map_info_data and isinstance(map_info_data, list):
+        parsed_map_info = parse_envi_map_info_list(map_info_data)
+        if parsed_map_info:
+            wcs_object = create_wcs_from_parsed_info(parsed_map_info, sr_data.shape[:2])
+            if wcs_object:
+                wcs_header_dict = create_wcs_header_dict(wcs_object, parsed_map_info)
+    
+    # Create coordinates
+    lines, samples = sr_data.shape[:2]
+    line_coords = xr.DataArray(
+        np.arange(lines), 
+        dims='line', 
+        attrs={'long_name': 'Spatial dimension Y', 'units': 'pixel_index'}
+    )
+    sample_coords = xr.DataArray(
+        np.arange(samples), 
+        dims='sample', 
+        attrs={'long_name': 'Spatial dimension X', 'units': 'pixel_index'}
+    )
+    wavelength_coords = xr.DataArray(
+        wavelengths, 
+        dims='wavelength', 
+        attrs={'long_name': 'Wavelength', 'units': wavelength_units}
+    )
+    if_band_coords = xr.DataArray(
+        if_band_names, 
+        dims='if_band', 
+        attrs={'long_name': 'Geometry Band'}
+    )
+    
+    # Create DataArrays
+    sr_da = xr.DataArray(
+        data=sr_data_backend,
+        coords={'line': line_coords, 'sample': sample_coords, 'wavelength': wavelength_coords},
+        dims=['line', 'sample', 'wavelength'],
+        name='spectral_data',
+        attrs={
+            'description': meta_sr.get('description', 'Spectral data'),
+            'source_file': f"{base_sr_path}.hdr"
+        }
+    )
+    
+    if_da = xr.DataArray(
+        data=if_data_backend,
+        coords={'line': line_coords, 'sample': sample_coords, 'if_band': if_band_coords},
+        dims=['line', 'sample', 'if_band'],
+        name='geometry_angles',
+        attrs={
+            'description': meta_if.get('description', 'Geometry data'),
+            'source_file': f"{base_if_path}.hdr"
+        }
+    )
+    
+    # Create global attributes
+    global_attrs = {
+        'title': f'CRISM Combined Dataset for {os.path.basename(base_sr_path)}',
+        'source_files_base': f"{base_sr_path}, {base_if_path}",
+        'processing_script': 'astrogea library',
+        'creation_date': time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        'Conventions': 'CF-1.8',
+        'history': f'{time.strftime("%Y-%m-%d %H:%M:%S")}: Created dataset using astrogea library.'
+    }
+    
+    # Add WCS information
+    if wcs_header_dict:
+        global_attrs['wcs_header_dict'] = str(wcs_header_dict)
+        global_attrs['has_wcs'] = 1
+        global_attrs['has_wcs_comment'] = "Integer flag: 1 = WCS header present, 0 = no WCS info."
+    else:
+        global_attrs['has_wcs'] = 0
+        global_attrs['has_wcs_comment'] = "Integer flag: 1 = WCS header present, 0 = no WCS info."
+    
+    # Create dataset
+    ds = xr.Dataset(
+        {
+            'spectral_data': sr_da,
+            'geometry_angles': if_da
+        },
+        coords={
+            'line': line_coords,
+            'sample': sample_coords,
+            'wavelength': wavelength_coords,
+            'if_band': if_band_coords
+        },
+        attrs=global_attrs
+    )
+    
+    # Save in NetCDF
+    encoding_options = {}
+    
+    # Only add compression if netCDF4 is available
+    try:
+        import netCDF4
+        encoding_options = {
+            'spectral_data': {'zlib': True, 'complevel': 4},
+            'geometry_angles': {'zlib': True, 'complevel': 4}
+        }
+        
+        if sr_da.dtype.kind == 'f':
+            encoding_options['spectral_data']['_FillValue'] = np.nan
+        if if_da.dtype.kind == 'f':
+            encoding_options['geometry_angles']['_FillValue'] = np.nan
+    except ImportError:
+        # Use scipy backend without compression
+        pass
+    
+    if use_dask:
+        try:
+            from dask.diagnostics import ProgressBar
+            print("   Saving with Dask backend...")
+            with ProgressBar():
+                ds.to_netcdf(output_nc_path, encoding=encoding_options)
+        except ImportError:
+            ds.to_netcdf(output_nc_path, encoding=encoding_options)
+    else:
+        ds.to_netcdf(output_nc_path, encoding=encoding_options)
+    
+    return ds
+
+def envi_to_xarray_wcs(hdr_path: str, img_path: str = None) -> xr.Dataset:
+    """
+    Convert an ENVI file (.hdr/.img) to an xarray with WCS coordinates using only astrogea.
+    
+    Args:
+        hdr_path: Path to the .hdr file
+        img_path: Path to the .img file (if None, uses the same name as hdr_path)
+    
+    Returns:
+        xarray.Dataset: Dataset with WCS coordinates
+    """
+    if img_path is None:
+        img_path = hdr_path
+    
+    # Load the ENVI file using spectral
+    img = _open_envi_file(hdr_path)
+    data = img.load()
+    
+    # Extract wavelengths
+    wavelengths = np.linspace(1.0, 2.5, data.shape[2])  # Default wavelengths
+    wavelength_units = 'micrometers'
+    if hasattr(img, 'bands') and img.bands.centers:
+        wavelengths = np.array(img.bands.centers, dtype=np.float32)
+        wavelength_units = img.metadata.get('wavelength units', 'unknown')
+    
+    # Use astrogea's SpectralArrayWrapper to convert to xarray
+    wrapper = SpectralArrayWrapper(data, wavelengths)
+    xarray_data = wrapper.to_xarray()
+    
+    # Create coordinates
+    lines, samples = data.shape[:2]
+    line_coords = xr.DataArray(
+        np.arange(lines), 
+        dims='line', 
+        attrs={'long_name': 'Spatial dimension Y', 'units': 'pixel_index'}
+    )
+    sample_coords = xr.DataArray(
+        np.arange(samples), 
+        dims='sample', 
+        attrs={'long_name': 'Spatial dimension X', 'units': 'pixel_index'}
+    )
+    wavelength_coords = xr.DataArray(
+        wavelengths, 
+        dims='wavelength', 
+        attrs={'long_name': 'Wavelength', 'units': wavelength_units}
+    )
+    
+    # Create base dataset
+    ds = xr.Dataset({
+        "spectral_data": xarray_data
+    })
+    
+    # Apply georeferencing if available
+    map_info = img.metadata.get("map info")
+    wcs_object = None
+    wcs_header_dict = None
+    
+    if map_info:
+        parsed_info = parse_envi_map_info_list(map_info)
+        if parsed_info:
+            wcs_object = create_wcs_from_parsed_info(parsed_info, data.shape[:2])
+            if wcs_object:
+                wcs_header_dict = create_wcs_header_dict(wcs_object, parsed_info)
+    
+    # Create global attributes
+    global_attrs = {
+        'title': f'ENVI Dataset for {os.path.basename(hdr_path)}',
+        'source_file': hdr_path,
+        'processing_script': 'astrogea library',
+        'creation_date': time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        'Conventions': 'CF-1.8',
+        'history': f'{time.strftime("%Y-%m-%d %H:%M:%S")}: Created dataset using astrogea library.'
+    }
+    
+    # Add WCS information
+    if wcs_header_dict:
+        global_attrs['wcs_header_dict'] = str(wcs_header_dict)
+        global_attrs['has_wcs'] = 1
+        global_attrs['has_wcs_comment'] = "Integer flag: 1 = WCS header present, 0 = no WCS info."
+    else:
+        global_attrs['has_wcs'] = 0
+        global_attrs['has_wcs_comment'] = "Integer flag: 1 = WCS header present, 0 = no WCS info."
+    
+    ds.attrs.update(global_attrs)
+    
+    return ds

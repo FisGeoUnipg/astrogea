@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "astrogea"
+version = "0.1.4"
+description = "Processing and georeferencing of CRISM data in WCS and NetCDF format"
+readme = "README.md"
+authors = [
+  { name="Valter Amorini", email="valter.amorini@i4m.it" }
+]
+maintainers = [
+  { name="Valter Amorini", email="valter.amorini@i4m.it" }
+]
+keywords = ["astronomy", "mars", "crism", "spectral", "netcdf", "geospatial"]
+dependencies = [
+  "numpy>=1.20.0",
+  "xarray>=2022.1.0",
+  "spectral>=0.22.0",
+  "astropy>=5.0.0"
+]
+requires-python = ">=3.8"
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: GIS",
+  "Topic :: Scientific/Engineering :: Astronomy",
+  "Topic :: Scientific/Engineering :: Information Analysis"
+]
+
+[project.urls]
+Homepage = "https://github.com/tuutente/astrogea"
+Documentation = "https://github.com/tuutente/astrogea#readme"
+Repository = "https://github.com/tuutente/astrogea.git"
+Issues = "https://github.com/tuutente/astrogea/issues"
+
+[project.scripts]
+astrogea = "astrogea.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["astrogea*"]
+
+[tool.setuptools.package-data]
+astrogea = ["*.txt", "*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[project.optional-dependencies]
+netcdf4 = ["netCDF4>=1.6.0"]
+dask = ["dask>=2022.1.0", "dask[array]>=2022.1.0"]
+geospatial = ["rasterio>=1.2.0"]
+all = ["netCDF4>=1.6.0", "dask>=2022.1.0", "dask[array]>=2022.1.0", "rasterio>=1.2.0"]
