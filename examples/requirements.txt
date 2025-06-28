@@ -1,7 +1,0 @@
-spectralpy
-numpy
-xarray
-matplotlib
-netCDF4 #legge xarray
-pdoc #per fare documentazione automatica
-dask[complete]
