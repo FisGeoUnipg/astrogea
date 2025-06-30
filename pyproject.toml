@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "astrogea"
-version = "0.1.4"
+version = "0.1.5"
 description = "Processing and georeferencing of CRISM data in WCS and NetCDF format"
 readme = "README.md"
 authors = [
@@ -18,7 +18,8 @@ dependencies = [
   "numpy>=1.20.0",
   "xarray>=2022.1.0",
   "spectral>=0.22.0",
-  "astropy>=5.0.0"
+  "astropy>=5.0.0",
+  "scipy>=1.7.0"
 ]
 requires-python = ">=3.8"
 classifiers = [
@@ -62,3 +63,6 @@ netcdf4 = ["netCDF4>=1.6.0"]
 dask = ["dask>=2022.1.0", "dask[array]>=2022.1.0"]
 geospatial = ["rasterio>=1.2.0"]
 all = ["netCDF4>=1.6.0", "dask>=2022.1.0", "dask[array]>=2022.1.0", "rasterio>=1.2.0"]
+
+# Le funzioni continuum_removal e continuum_to_xarray_wcs sono ora parte dell'API pubblica del pacchetto astrogea e disponibili in astrogea.core
+# Per l'utente: from astrogea.core import continuum_removal, continuum_to_xarray_wcs

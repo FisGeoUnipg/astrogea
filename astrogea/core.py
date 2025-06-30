@@ -334,3 +334,140 @@ def envi_to_xarray_wcs(hdr_path: str, img_path: str = None) -> xr.Dataset:
     ds.attrs.update(global_attrs)
     
     return ds
+
+def continuum_removal(img, wavelength, MIN, MAX, interp='linear', force=False, forcemin=1500, forcemax=1800, use_dask=False):
+    """
+    Continuum removal usando interpolazione hull convesso per ogni pixel di un cubo iperspettrale.
+    Supporta calcolo parallelo con Dask se use_dask=True.
+
+    Parameters
+    ----------
+    img : np.ndarray or dask.array.Array
+        Cubo iperspettrale (I, J, K)
+    wavelength : np.ndarray
+        Array delle lunghezze d'onda (K,)
+    MIN, MAX : float
+        Limiti di lunghezza d'onda per l'analisi
+    interp : str, default 'linear'
+        Tipo di interpolazione ('linear', 'cubic', ...)
+    force : bool, default False
+        Se True forza il passaggio del continuo per un punto specifico
+    forcemin, forcemax : float, default 1500, 1800
+        Range di lunghezze d'onda per il punto forzato
+    use_dask : bool, default False
+        Se True usa Dask per il calcolo parallelo
+
+    Returns
+    -------
+    result : np.ndarray or dask.array.Array
+        Cubo normalizzato (I, J, n_bands)
+    x : np.ndarray
+        Lunghezze d'onda corrispondenti
+    """
+    import numpy as np
+    from scipy.interpolate import interp1d
+    from scipy.spatial import ConvexHull
+
+    # Dask support
+    if use_dask:
+        try:
+            import dask.array as da
+        except ImportError:
+            warnings.warn("Dask non disponibile, uso NumPy.")
+            da = None
+            use_dask = False
+    else:
+        da = None
+
+    I, J, K = img.shape
+    limI = int(np.argmin(np.abs(wavelength - MIN)))
+    limU = int(np.argmin(np.abs(wavelength - MAX)))
+    n = limU - limI
+
+    if force:
+        limA = int(np.argmin(np.abs(wavelength - forcemin)))
+        limB = int(np.argmin(np.abs(wavelength - forcemax)))
+
+    if n < 2:
+        raise ValueError("Too few bands in selected range.")
+
+    x = wavelength[limI:limU]
+
+    def _process_pixel(spectrum):
+        # skip invalid values (marked in CRISM hyperspectral data as 65535)
+        if spectrum[0] == 65535:
+            return np.full((n,), np.nan)
+        y = spectrum[limI:limU]
+        points = np.c_[x, y]
+        # process to build the convex hull
+        augmented = np.concatenate([points, [(x[0], np.min(y)-1), (x[-1], np.min(y)-1)]], axis=0)
+        hull = ConvexHull(augmented, incremental=True)
+        continuum_points = points[np.sort([v for v in hull.vertices if v < len(points)])]
+        # forcing the hull to pass through the point
+        if force:
+            sub_x = wavelength[limA:limB]
+            sub_y = spectrum[limA:limB]
+            if len(sub_y) == 0:
+                return np.full((n,), np.nan)
+            max_idx = np.argmax(sub_y)
+            max_wave = sub_x[max_idx]
+            max_val = sub_y[max_idx]
+            max_point = np.array([[max_wave, max_val]])
+            continuum_points = np.vstack([continuum_points, max_point])
+            continuum_points = continuum_points[np.argsort(continuum_points[:, 0])]
+        # interpolate the convex hull to have the same length as the spectrum
+        continuum_function = interp1d(*continuum_points.T, kind=interp, fill_value="extrapolate")
+        neutral = continuum_function(x)
+        # compute the "corrected" spectrum as a ratio between the spectrum and the hull
+        return y / neutral
+
+    if use_dask and da is not None and isinstance(img, da.Array):
+        # Dask parallelization: map_blocks expects (I, J, K) -> (I, J, n)
+        def _dask_apply(block):
+            out = np.empty((block.shape[0], block.shape[1], n), dtype=block.dtype)
+            for i in range(block.shape[0]):
+                for j in range(block.shape[1]):
+                    out[i, j, :] = _process_pixel(block[i, j, :])
+            return out
+        result = img.map_blocks(_dask_apply, dtype=img.dtype, chunks=(img.chunks[0], img.chunks[1], n))
+    else:
+        result = np.zeros((I, J, n), dtype=img.dtype)
+        for i in range(I):
+            for j in range(J):
+                result[i, j, :] = _process_pixel(img[i, j, :])
+
+    return result, x
+
+def continuum_to_xarray_wcs(result, x, parsed_map_info=None):
+    """
+    Utility: crea un xarray.Dataset dal risultato di continuum_removal, con coordinate e attributi WCS opzionali.
+    result: array (Y, X, bands)
+    x: array delle lunghezze d'onda
+    parsed_map_info: dict opzionale, come restituito da parse_envi_map_info_list
+    """
+    import xarray as xr
+    import numpy as np
+    from .wcs_utils import create_wcs_from_parsed_info, create_wcs_header_dict
+    y, x_dim, bands = result.shape
+    coords = {
+        'y': np.arange(y),
+        'x': np.arange(x_dim),
+        'wavelength': x
+    }
+    da = xr.DataArray(
+        data=result,
+        dims=["y", "x", "wavelength"],
+        coords=coords,
+        name="continuum_removed"
+    )
+    attrs = {}
+    if parsed_map_info is not None:
+        wcs_obj = create_wcs_from_parsed_info(parsed_map_info, (y, x_dim))
+        if wcs_obj is not None:
+            wcs_header = create_wcs_header_dict(wcs_obj, parsed_map_info)
+            attrs['wcs_header_dict'] = str(wcs_header)
+            attrs['has_wcs'] = 1
+        else:
+            attrs['has_wcs'] = 0
+    da.attrs.update(attrs)
+    return da

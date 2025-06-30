@@ -283,3 +283,40 @@ print("They could be read separately (if in ENVI format) and integrated")
 print("into the xarray DataArray as additional coordinates or in an xarray.Dataset.")
 
 print("\n--- Script completed ---")
+
+# --- ESEMPIO: Continuum Removal + salvataggio NetCDF con WCS (NumPy e Dask) ---
+if __name__ == "__main__":
+    from astrogea.core import continuum_removal, continuum_to_xarray_wcs
+    from astrogea.wcs_utils import parse_envi_map_info_list
+    import numpy as np
+    import xarray as xr
+    # Dati sintetici
+    img = np.random.rand(5, 5, 20) * 1000
+    wavelength = np.linspace(1000, 2500, 20)
+    MIN, MAX = 1200, 2200
+    # --- Versione NumPy ---
+    result, x = continuum_removal(img, wavelength, MIN, MAX)
+    map_info = [
+        "UTM", 1.0, 2.0, 100.0, 200.0, 30.0, 30.0, "meters"
+    ]
+    parsed_map_info = parse_envi_map_info_list(map_info)
+    da = continuum_to_xarray_wcs(result, x, parsed_map_info)
+    out_path = "out_continuum.nc"
+    da.to_netcdf(out_path)
+    print(f"File NetCDF con WCS salvato (NumPy): {out_path}")
+    loaded = xr.open_dataarray(out_path)
+    print("Attributi del file NumPy:", loaded.attrs)
+    # --- Versione Dask ---
+    try:
+        import dask.array as da_dask
+        dask_img = da_dask.from_array(img, chunks=(2, 2, 20))
+        result_dask, x_dask = continuum_removal(dask_img, wavelength, MIN, MAX, use_dask=True)
+        computed = result_dask.compute()
+        da_dask_xr = continuum_to_xarray_wcs(computed, x_dask, parsed_map_info)
+        out_path_dask = "out_continuum_dask.nc"
+        da_dask_xr.to_netcdf(out_path_dask)
+        print(f"File NetCDF con WCS salvato (Dask): {out_path_dask}")
+        loaded_dask = xr.open_dataarray(out_path_dask)
+        print("Attributi del file Dask:", loaded_dask.attrs)
+    except ImportError:
+        print("Dask non disponibile, esempio solo NumPy.")
