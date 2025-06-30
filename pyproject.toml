@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "astrogea"
-version = "0.1.5"
-description = "Processing and georeferencing of CRISM data in WCS and NetCDF format"
+version = "0.1.6"
+description = "Processing and georeferencing of CRISM data in WCS and NetCDF format. Includes mafic band analysis."
 readme = "README.md"
 authors = [
   { name="Valter Amorini", email="valter.amorini@i4m.it" }

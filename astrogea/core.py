@@ -471,3 +471,105 @@ def continuum_to_xarray_wcs(result, x, parsed_map_info=None):
             attrs['has_wcs'] = 0
     da.attrs.update(attrs)
     return da
+
+def band_parameters_mafic(img_removed, wav, nbands=5, windows_nm=75, resolution_nm=5, tol=10, use_dask=False):
+    """
+    Calcola i parametri delle bande (minimo, centro, profondità, area, asimmetria) su uno spettro continuum-removed.
+    Supporta calcolo parallelo con Dask se use_dask=True.
+
+    Parameters
+    ----------
+    img_removed : np.ndarray or dask.array.Array
+        Cubo continuum-removed (I, J, K)
+    wav : np.ndarray
+        Array delle lunghezze d'onda (K,)
+    nbands : int, default 5
+        Numero massimo di bande da cercare
+    windows_nm : float, default 75
+        Finestra in nm per la ricerca del centro banda
+    resolution_nm : float, default 5
+        Risoluzione in nm per l'interpolazione
+    tol : int, default 10
+        Soglia minima di ampiezza banda (in pixel)
+    use_dask : bool, default False
+        Se True usa Dask per il calcolo parallelo
+
+    Returns
+    -------
+    mappa : np.ndarray or dask.array.Array
+        Array (I, J, nbands*5) con i parametri delle bande
+    """
+    import numpy as np
+    from scipy.interpolate import interp1d
+    def find_nearest(array, value):
+        array = np.asarray(array)
+        idx = (np.abs(array - value)).argmin()
+        return idx
+
+    I, J, K = img_removed.shape
+    mappa = np.zeros((I, J, int(nbands*5)))
+    x = wav
+
+    def _process_pixel(y):
+        if y[0] == 0:
+            return np.zeros(nbands*5)
+        ones_indexes = np.argwhere(y == 1)
+        ones_idx = [ones_indexes[i][0] for i in range(len(ones_indexes))]
+        l = 0
+        out = np.zeros(nbands*5)
+        for i in range(0, len(ones_idx) - 1):
+            if ones_idx[i+1] - ones_idx[i] >= tol:
+                S = y[ones_idx[i]:ones_idx[i+1]]
+                X = x[ones_idx[i]:ones_idx[i+1]]
+                if len(S) < 3:
+                    continue
+                minimum, minimum_index = np.min(S), np.argmin(S)
+                shift_right = find_nearest(X, X[minimum_index]+windows_nm)
+                shift_left = find_nearest(X, X[minimum_index]-windows_nm)
+                Xfit_range = np.arange(X[shift_left], X[shift_right]+resolution_nm, resolution_nm)
+                interp_S = interp1d(X, S, kind='cubic', fill_value="extrapolate")(Xfit_range)
+                coeffs = np.polyfit(Xfit_range, interp_S, 4)
+                poly = np.poly1d(coeffs)
+                y_poly = poly(Xfit_range)
+                idx_center = np.argmin(y_poly)
+                band_center_wav = Xfit_range[idx_center]
+                band_center_val = y_poly[idx_center]
+                band_depth = 1 - S[idx_center] if idx_center < len(S) else 0
+                total_area = np.trapz(np.ones_like(S) - S, X)
+                left_area = np.trapz(S[:idx_center], X[:idx_center]) if idx_center > 0 else 0
+                right_area = np.trapz(S[idx_center:], X[idx_center:]) if idx_center < len(S) else 0
+                asymmetry = (right_area - left_area) / (100 * total_area) if total_area != 0 else 0
+                out[l] = X[minimum_index]
+                out[l+1] = band_center_wav
+                out[l+2] = band_depth
+                out[l+3] = total_area
+                out[l+4] = asymmetry
+                l += 5
+                if l >= nbands*5:
+                    break
+        return out
+
+    # Dask support
+    if use_dask:
+        try:
+            import dask.array as da
+        except ImportError:
+            da = None
+            use_dask = False
+    else:
+        da = None
+
+    if use_dask and da is not None and isinstance(img_removed, da.Array):
+        def _dask_apply(block):
+            out = np.zeros((block.shape[0], block.shape[1], nbands*5), dtype=block.dtype)
+            for i in range(block.shape[0]):
+                for j in range(block.shape[1]):
+                    out[i, j, :] = _process_pixel(block[i, j, :])
+            return out
+        result = img_removed.map_blocks(_dask_apply, dtype=img_removed.dtype, chunks=(img_removed.chunks[0], img_removed.chunks[1], nbands*5))
+        return result
+    else:
+        for I in range(I):
+            for J in range(J):
+                mappa[I, J, :] = _process_pixel(img_removed[I, J, :])
+        return mappa

@@ -1,4 +1,4 @@
-from .core import process_crism_file, envi_to_xarray_wcs
+from .core import process_crism_file, envi_to_xarray_wcs, band_parameters_mafic, continuum_removal
 from .spectral_wrapper import SpectralArrayWrapper
 from .wcs_utils import parse_envi_map_info_list, create_wcs_from_parsed_info, create_wcs_header_dict
 
@@ -10,5 +10,7 @@ __all__ = [
     "SpectralArrayWrapper",
     "parse_envi_map_info_list",
     "create_wcs_from_parsed_info",
-    "create_wcs_header_dict"
+    "create_wcs_header_dict",
+    "band_parameters_mafic",
+    "continuum_removal"
 ]
