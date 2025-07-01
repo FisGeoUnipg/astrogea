@@ -573,3 +573,106 @@ def band_parameters_mafic(img_removed, wav, nbands=5, windows_nm=75, resolution_
             for J in range(J):
                 mappa[I, J, :] = _process_pixel(img_removed[I, J, :])
         return mappa
+
+def smoothing_moving_average(img, wavelength, MIN, MAX, window_size=3, use_dask=False):
+    """
+    Applica uno smoothing moving average (media mobile) su un cubo iperspettrale nell'intervallo di lunghezze d'onda specificato.
+    Supporta calcolo parallelo con Dask se use_dask=True.
+
+    Parameters
+    ----------
+    img : np.ndarray or dask.array.Array
+        Cubo iperspettrale (I, J, K)
+    wavelength : np.ndarray
+        Array delle lunghezze d'onda (K,)
+    MIN, MAX : float
+        Limiti di lunghezza d'onda per l'analisi
+    window_size : int, default 3
+        Dimensione della finestra per la media mobile
+    use_dask : bool, default False
+        Se True usa Dask per il calcolo parallelo
+
+    Returns
+    -------
+    result : np.ndarray or dask.array.Array
+        Cubo smoothato (I, J, n_bands)
+    x : np.ndarray
+        Lunghezze d'onda corrispondenti
+    """
+    import numpy as np
+    
+    # Dask support
+    if use_dask:
+        try:
+            import dask.array as da
+        except ImportError:
+            warnings.warn("Dask non disponibile, uso NumPy.")
+            da = None
+            use_dask = False
+    else:
+        da = None
+
+    limI = int(np.argmin(np.abs(wavelength - MIN)))
+    limU = int(np.argmin(np.abs(wavelength - MAX)))
+    n = limU - limI
+    x = wavelength[limI:limU]
+    img = img[:, :, limI:limU]
+    I, J, K = img.shape
+    half_window = window_size // 2
+
+    def _process_pixel(y):
+        res = np.zeros(n)
+        for k in range(n):
+            start = max(0, k - half_window)
+            end = min(n, k + half_window + 1)
+            res[k] = np.mean(y[start:end])
+        return res
+
+    if use_dask and da is not None and isinstance(img, da.Array):
+        def _dask_apply(block):
+            out = np.empty((block.shape[0], block.shape[1], n), dtype=block.dtype)
+            for i in range(block.shape[0]):
+                for j in range(block.shape[1]):
+                    out[i, j, :] = _process_pixel(block[i, j, :])
+            return out
+        result = img.map_blocks(_dask_apply, dtype=img.dtype, chunks=(img.chunks[0], img.chunks[1], n))
+    else:
+        result = np.zeros((I, J, n), dtype=img.dtype)
+        for i in range(I):
+            for j in range(J):
+                result[i, j, :] = _process_pixel(img[i, j, :])
+
+    return result, x
+
+def coregister_spectra(reference_wavelengths, new_wavelengths, new_reflectance):
+    """
+    Interpola i valori di riflettanza di uno spettro su una griglia di lunghezze d'onda di riferimento.
+
+    Parameters
+    ----------
+    reference_wavelengths : array-like
+        Array dei valori di lunghezza d'onda target (griglia di riferimento)
+    new_wavelengths : array-like
+        Array delle lunghezze d'onda originali dello spettro da riallineare
+    new_reflectance : array-like
+        Array dei valori di riflettanza corrispondenti a new_wavelengths
+
+    Returns
+    -------
+    interpolated_reflectance : np.ndarray
+        Valori di riflettanza interpolati sulla griglia reference_wavelengths
+    """
+    from scipy.interpolate import interp1d
+    # Supporto Dask: converto input Dask a NumPy
+    try:
+        import dask.array as da
+        if isinstance(reference_wavelengths, da.Array):
+            reference_wavelengths = reference_wavelengths.compute()
+        if isinstance(new_wavelengths, da.Array):
+            new_wavelengths = new_wavelengths.compute()
+        if isinstance(new_reflectance, da.Array):
+            new_reflectance = new_reflectance.compute()
+    except ImportError:
+        pass
+    interp_func = interp1d(new_wavelengths, new_reflectance, kind='linear', fill_value="extrapolate")
+    return interp_func(reference_wavelengths)
