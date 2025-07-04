@@ -259,3 +259,54 @@ def coregister_spectra(reference_wavelengths, new_wavelengths, new_reflectance):
 ```
 
 For more details, refer to the function documentation in `astrogea.core`.
+
+## Additional Spectral Utilities
+
+### remove_crism_bad_ranges_cube
+Removes problematic CRISM spectral windows from a hyperspectral datacube.
+```python
+from astrogea.core import remove_crism_bad_ranges_cube
+cube_good, wavelengths_good = remove_crism_bad_ranges_cube(cube, wavelengths_nm)
+```
+
+### row_norm, column_norm, center_norm, L1_norm, minmax, robust_scaler, derivative, log_1_r_norm
+Various normalization and scaling utilities for spectral data. All support NumPy and Dask arrays via the 'use_dask' parameter.
+```python
+from astrogea.core import row_norm, column_norm, center_norm, L1_norm, minmax, robust_scaler, derivative, log_1_r_norm
+# Example: Normalize spectra using L1 norm
+normed = L1_norm(spectra, use_dask=False)
+# With Dask:
+import dask.array as da
+spectra_dask = da.from_array(spectra, chunks=(100, 10))
+normed_dask = L1_norm(spectra_dask, use_dask=True)
+```
+
+### baseline_correction_cube
+Applies baseline correction to a hyperspectral datacube using polynomial fitting.
+```python
+from astrogea.core import baseline_correction_cube
+corrected = baseline_correction_cube(cube, wavelengths_nm, order=1)
+```
+
+### auto_stretch_rgb
+Automatically stretches each band of a hyperspectral image for RGB visualization.
+```python
+from astrogea.core import auto_stretch_rgb
+stretched = auto_stretch_rgb(img_sr, product_names)
+```
+
+### unison_shuffled_copies
+Shuffles two arrays in unison using a fixed seed.
+```python
+from astrogea.core import unison_shuffled_copies
+shuffled_spectra, shuffled_indexes = unison_shuffled_copies(spectra, indexes)
+```
+
+### merge_datacubes, spetial_merge_datacubes, hypermerge_spatial
+Utilities for merging multiple hyperspectral datacubes along different axes.
+```python
+from astrogea.core import merge_datacubes, spetial_merge_datacubes, hypermerge_spatial
+merged = merge_datacubes([cube1, cube2], axis=2)
+spatial_merged = spetial_merge_datacubes([cube1, cube2])
+hyper_merged = hypermerge_spatial([cube1, cube2])
+```
