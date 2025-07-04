@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "astrogea"
-version = "0.1.9"
+version = "0.1.10"
 description = "Processing and georeferencing of CRISM data in WCS and NetCDF format. Includes mafic band analysis."
 readme = "README.md"
 authors = [
@@ -20,7 +20,8 @@ dependencies = [
   "spectral>=0.22.0",
   "astropy>=5.0.0",
   "scipy>=1.7.0",
-  "dask[array]>=2022.1.0"
+  "dask[array]>=2022.1.0",
+  "matplotlib>=3.0.0"
 ]
 requires-python = ">=3.8"
 classifiers = [

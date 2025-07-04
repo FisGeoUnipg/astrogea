@@ -337,32 +337,32 @@ def envi_to_xarray_wcs(hdr_path: str, img_path: str = None) -> xr.Dataset:
 
 def continuum_removal(img, wavelength, MIN, MAX, interp='linear', force=False, forcemin=1500, forcemax=1800, use_dask=False):
     """
-    Continuum removal usando interpolazione hull convesso per ogni pixel di un cubo iperspettrale.
-    Supporta calcolo parallelo con Dask se use_dask=True.
+    Continuum removal using convex hull interpolation for each pixel of a hyperspectral cube.
+    Supports parallel computation with Dask if use_dask=True.
 
     Parameters
     ----------
     img : np.ndarray or dask.array.Array
-        Cubo iperspettrale (I, J, K)
+        Hyperspectral cube (I, J, K)
     wavelength : np.ndarray
-        Array delle lunghezze d'onda (K,)
+        Array of wavelengths (K,)
     MIN, MAX : float
-        Limiti di lunghezza d'onda per l'analisi
+        Wavelength limits for analysis
     interp : str, default 'linear'
-        Tipo di interpolazione ('linear', 'cubic', ...)
+        Interpolation type ('linear', 'cubic', ...)
     force : bool, default False
-        Se True forza il passaggio del continuo per un punto specifico
+        If True forces the continuum to pass through a specific point
     forcemin, forcemax : float, default 1500, 1800
-        Range di lunghezze d'onda per il punto forzato
+        Wavelength range for the forced point
     use_dask : bool, default False
-        Se True usa Dask per il calcolo parallelo
+        If True uses Dask for parallel computation
 
     Returns
     -------
     result : np.ndarray or dask.array.Array
-        Cubo normalizzato (I, J, n_bands)
+        Normalized cube (I, J, n_bands)
     x : np.ndarray
-        Lunghezze d'onda corrispondenti
+        Corresponding wavelengths
     """
     import numpy as np
     from scipy.interpolate import interp1d
@@ -373,7 +373,7 @@ def continuum_removal(img, wavelength, MIN, MAX, interp='linear', force=False, f
         try:
             import dask.array as da
         except ImportError:
-            warnings.warn("Dask non disponibile, uso NumPy.")
+            warnings.warn("Dask not available, using NumPy.")
             da = None
             use_dask = False
     else:
@@ -440,10 +440,10 @@ def continuum_removal(img, wavelength, MIN, MAX, interp='linear', force=False, f
 
 def continuum_to_xarray_wcs(result, x, parsed_map_info=None):
     """
-    Utility: crea un xarray.Dataset dal risultato di continuum_removal, con coordinate e attributi WCS opzionali.
+    Utility: creates an xarray.Dataset from the result of continuum_removal, with optional WCS coordinates.
     result: array (Y, X, bands)
-    x: array delle lunghezze d'onda
-    parsed_map_info: dict opzionale, come restituito da parse_envi_map_info_list
+    x: array of wavelengths
+    parsed_map_info: optional dict, as returned by parse_envi_map_info_list
     """
     import xarray as xr
     import numpy as np
@@ -462,9 +462,9 @@ def continuum_to_xarray_wcs(result, x, parsed_map_info=None):
     )
     attrs = {}
     if parsed_map_info is not None:
-        wcs_obj = create_wcs_from_parsed_info(parsed_map_info, (y, x_dim))
+        wcs_obj = create_wcs_from_parsed_info(parsed_info, (y, x_dim))
         if wcs_obj is not None:
-            wcs_header = create_wcs_header_dict(wcs_obj, parsed_map_info)
+            wcs_header = create_wcs_header_dict(wcs_obj, parsed_info)
             attrs['wcs_header_dict'] = str(wcs_header)
             attrs['has_wcs'] = 1
         else:
@@ -474,30 +474,30 @@ def continuum_to_xarray_wcs(result, x, parsed_map_info=None):
 
 def band_parameters_mafic(img_removed, wav, nbands=5, windows_nm=75, resolution_nm=5, tol=10, use_dask=False):
     """
-    Calcola i parametri delle bande (minimo, centro, profondità, area, asimmetria) su uno spettro continuum-removed.
-    Supporta calcolo parallelo con Dask se use_dask=True.
+    Calculates band parameters (minimum, center, depth, area, asymmetry) on a continuum-removed spectrum.
+    Supports parallel computation with Dask if use_dask=True.
 
     Parameters
     ----------
     img_removed : np.ndarray or dask.array.Array
-        Cubo continuum-removed (I, J, K)
+        Continuum-removed cube (I, J, K)
     wav : np.ndarray
-        Array delle lunghezze d'onda (K,)
+        Array of wavelengths (K,)
     nbands : int, default 5
-        Numero massimo di bande da cercare
+        Maximum number of bands to search for
     windows_nm : float, default 75
-        Finestra in nm per la ricerca del centro banda
+        Window in nm for band center search
     resolution_nm : float, default 5
-        Risoluzione in nm per l'interpolazione
+        Resolution in nm for interpolation
     tol : int, default 10
-        Soglia minima di ampiezza banda (in pixel)
+        Minimum amplitude threshold for a band (in pixels)
     use_dask : bool, default False
-        Se True usa Dask per il calcolo parallelo
+        If True uses Dask for parallel computation
 
     Returns
     -------
     mappa : np.ndarray or dask.array.Array
-        Array (I, J, nbands*5) con i parametri delle bande
+        Array (I, J, nbands*5) with band parameters
     """
     import numpy as np
     from scipy.interpolate import interp1d
@@ -535,9 +535,9 @@ def band_parameters_mafic(img_removed, wav, nbands=5, windows_nm=75, resolution_
                 band_center_wav = Xfit_range[idx_center]
                 band_center_val = y_poly[idx_center]
                 band_depth = 1 - S[idx_center] if idx_center < len(S) else 0
-                total_area = np.trapz(np.ones_like(S) - S, X)
-                left_area = np.trapz(S[:idx_center], X[:idx_center]) if idx_center > 0 else 0
-                right_area = np.trapz(S[idx_center:], X[idx_center:]) if idx_center < len(S) else 0
+                total_area = np.trapezoid(np.ones_like(S) - S, X)
+                left_area = np.trapezoid(S[:idx_center], X[:idx_center]) if idx_center > 0 else 0
+                right_area = np.trapezoid(S[idx_center:], X[idx_center:]) if idx_center < len(S) else 0
                 asymmetry = (right_area - left_area) / (100 * total_area) if total_area != 0 else 0
                 out[l] = X[minimum_index]
                 out[l+1] = band_center_wav
@@ -576,28 +576,28 @@ def band_parameters_mafic(img_removed, wav, nbands=5, windows_nm=75, resolution_
 
 def smoothing_moving_average(img, wavelength, MIN, MAX, window_size=3, use_dask=False):
     """
-    Applica uno smoothing moving average (media mobile) su un cubo iperspettrale nell'intervallo di lunghezze d'onda specificato.
-    Supporta calcolo parallelo con Dask se use_dask=True.
+    Applies a moving average smoothing (moving average) on a hyperspectral cube in the specified wavelength range.
+    Supports parallel computation with Dask if use_dask=True.
 
     Parameters
     ----------
     img : np.ndarray or dask.array.Array
-        Cubo iperspettrale (I, J, K)
+        Hyperspectral cube (I, J, K)
     wavelength : np.ndarray
-        Array delle lunghezze d'onda (K,)
+        Array of wavelengths (K,)
     MIN, MAX : float
-        Limiti di lunghezza d'onda per l'analisi
+        Wavelength limits for analysis
     window_size : int, default 3
-        Dimensione della finestra per la media mobile
+        Size of the moving average window
     use_dask : bool, default False
-        Se True usa Dask per il calcolo parallelo
+        If True uses Dask for parallel computation
 
     Returns
     -------
     result : np.ndarray or dask.array.Array
-        Cubo smoothato (I, J, n_bands)
+        Smoothed cube (I, J, n_bands)
     x : np.ndarray
-        Lunghezze d'onda corrispondenti
+        Corresponding wavelengths
     """
     import numpy as np
     
@@ -606,7 +606,7 @@ def smoothing_moving_average(img, wavelength, MIN, MAX, window_size=3, use_dask=
         try:
             import dask.array as da
         except ImportError:
-            warnings.warn("Dask non disponibile, uso NumPy.")
+            warnings.warn("Dask not available, using NumPy.")
             da = None
             use_dask = False
     else:
@@ -646,24 +646,24 @@ def smoothing_moving_average(img, wavelength, MIN, MAX, window_size=3, use_dask=
 
 def coregister_spectra(reference_wavelengths, new_wavelengths, new_reflectance):
     """
-    Interpola i valori di riflettanza di uno spettro su una griglia di lunghezze d'onda di riferimento.
+    Interpolates spectrum reflectance values onto a reference wavelength grid.
 
     Parameters
     ----------
     reference_wavelengths : array-like
-        Array dei valori di lunghezza d'onda target (griglia di riferimento)
+        Array of target wavelength values (reference grid)
     new_wavelengths : array-like
-        Array delle lunghezze d'onda originali dello spettro da riallineare
+        Array of original wavelengths of the spectrum to resample
     new_reflectance : array-like
-        Array dei valori di riflettanza corrispondenti a new_wavelengths
+        Array of reflectance values corresponding to new_wavelengths
 
     Returns
     -------
     interpolated_reflectance : np.ndarray
-        Valori di riflettanza interpolati sulla griglia reference_wavelengths
+        Reflectance values interpolated onto the reference_wavelengths grid
     """
     from scipy.interpolate import interp1d
-    # Supporto Dask: converto input Dask a NumPy
+    # Support Dask: convert input Dask to NumPy
     try:
         import dask.array as da
         if isinstance(reference_wavelengths, da.Array):
@@ -676,3 +676,338 @@ def coregister_spectra(reference_wavelengths, new_wavelengths, new_reflectance):
         pass
     interp_func = interp1d(new_wavelengths, new_reflectance, kind='linear', fill_value="extrapolate")
     return interp_func(reference_wavelengths)
+
+def remove_crism_bad_ranges_cube(cube, wavelengths_nm, bad_ranges=None):
+    """
+    Removes the CRISM problematic spectral windows from a hyperspectral datacube.
+
+    Parameters
+    ----------
+    cube : ndarray 3D
+        Reflectance datacube
+    wavelengths_nm : array 1D
+        Wavelengths array in nanometers
+    bad_ranges : list of tuples, optional
+        List with the problematic ranges. By default it is None and masks the ranges: (2650, 2820), (1930, 2020), (1650, 1670)
+
+    Returns
+    -------
+    cube_good : 3-dim numpy array
+        Masked hyperspectral datacube
+    wavelengths_good : 1-dim numpy array
+        Masked wavelengths array
+    """
+    if bad_ranges is None:
+        bad_ranges = [(2650, 2820), (1930, 2020), (1650, 1670)]
+    mask = np.ones_like(wavelengths_nm, dtype=bool)
+    for low, high in bad_ranges:
+        mask &= ~((wavelengths_nm >= low) & (wavelengths_nm <= high))
+    cube_good = cube[:, :, mask]
+    wavelengths_good = wavelengths_nm[mask]
+    return cube_good, wavelengths_good
+
+def row_norm(wav, spectra):
+    """
+    Normalize each row of the spectra by its integral (L1 norm) over the wavelength axis.
+    Parameters
+    ----------
+    wav : 1D array
+        Wavelengths
+    spectra : 2D array (n_spectra, n_wavelengths)
+        Spectral data
+    Returns
+    -------
+    spectra_norm : 2D array
+        Row-normalized spectra
+    """
+    spectra_norm = np.zeros_like(spectra)
+    for i in range(spectra.shape[0]):
+        spectra_norm[i] = spectra[i] / np.trapezoid(spectra[i], wav)
+    return spectra_norm
+
+def column_norm(spectra):
+    """
+    Normalize each column of the spectra to zero mean and unit variance.
+    Parameters
+    ----------
+    spectra : 2D array (n_samples, n_features)
+        Spectral data
+    Returns
+    -------
+    spectra_norm : 2D array
+        Column-normalized spectra
+    """
+    spectra_norm = np.zeros_like(spectra)
+    for i in range(spectra.shape[1]):
+        spectra_norm[:, i] = (spectra[:, i] - np.mean(spectra[:, i])) / np.std(spectra[:, i])
+    return spectra_norm
+
+def center_norm(spectra):
+    """
+    Center each column of the spectra to zero mean.
+    Parameters
+    ----------
+    spectra : 2D array (n_samples, n_features)
+        Spectral data
+    Returns
+    -------
+    spectra_norm : 2D array
+        Centered spectra
+    """
+    spectra_norm = np.zeros_like(spectra)
+    for i in range(spectra.shape[1]):
+        spectra_norm[:, i] = spectra[:, i] - np.mean(spectra[:, i])
+    return spectra_norm
+
+def _add_fake_wcs_attrs(da):
+    """Aggiunge metadati WCS fittizi a un DataArray se non presenti."""
+    if 'wcs' not in da.attrs:
+        da.attrs['wcs'] = 'fake_wcs_header'
+        da.attrs['has_wcs'] = 0
+        da.attrs['has_wcs_comment'] = "Integer flag: 1 = WCS header present, 0 = no WCS info."
+    return da
+
+def L1_norm(spectra, ord=1, use_dask: bool = False):
+    """
+    Normalizza ogni colonna (asse 0) dello spettro secondo la norma L1 (o altra).
+    Restituisce sempre un xarray.DataArray con metadati WCS fittizi se non presenti.
+    Args:
+        spectra: array 1D o 2D (numpy, Dask o xarray)
+        ord: ordine della norma (default 1)
+        use_dask: se True e l'input è Dask, usa Dask
+    Returns:
+        xarray.DataArray normalizzato
+    """
+    try:
+        import dask.array as da
+        is_dask = isinstance(spectra, da.Array)
+    except ImportError:
+        is_dask = False
+    if isinstance(spectra, xr.DataArray):
+        data = spectra.data
+        dims = spectra.dims
+        coords = spectra.coords
+    else:
+        data = spectra
+        dims = None
+        coords = None
+    if is_dask:
+        if data.ndim == 1:
+            norm = da.linalg.norm(data, ord=ord)
+            normed = data / (norm + 1e-12)
+        elif data.ndim == 2:
+            norm = da.linalg.norm(data, ord=ord, axis=0, keepdims=True)
+            normed = data / (norm + 1e-12)
+        else:
+            raise ValueError("Input array must be 1D or 2D")
+    else:
+        data = np.asarray(data)
+        if data.ndim == 1:
+            norm = np.linalg.norm(data, ord=ord)
+            normed = data / (norm + 1e-12)
+        elif data.ndim == 2:
+            norm = np.linalg.norm(data, ord=ord, axis=0, keepdims=True)
+            normed = data / (norm + 1e-12)
+        else:
+            raise ValueError("Input array must be 1D or 2D")
+    if dims is not None and coords is not None:
+        da_out = xr.DataArray(normed, dims=dims, coords=coords)
+    else:
+        da_out = xr.DataArray(normed)
+    return _add_fake_wcs_attrs(da_out)
+
+def minmax(spectra, mode='zero to one'):
+    """
+    Apply min-max normalization to each column of the spectra.
+    Parameters
+    ----------
+    spectra : 2D array (n_samples, n_features)
+        Spectral data
+    mode : str, 'zero to one' or '-one to one'
+        Normalization range
+    Returns
+    -------
+    spectra_norm : 2D array
+        Min-max normalized spectra
+    """
+    spectra_norm = np.zeros_like(spectra)
+    for i in range(spectra.shape[1]):
+        m, M = np.min(spectra[:, i]), np.max(spectra[:, i])
+        if mode == 'zero to one':
+            spectra_norm[:, i] = (spectra[:, i] - m) / (M - m)
+        elif mode == '-one to one':
+            spectra_norm[:, i] = 2 * (spectra[:, i] - m) / (M - m) - 1
+    return spectra_norm
+
+def robust_scaler(spectra, Q1=25, Q2=75):
+    """
+    Apply robust scaling to each column of the spectra (median centering and scaling by IQR).
+    Parameters
+    ----------
+    spectra : 2D array (n_samples, n_features)
+        Spectral data
+    Q1 : int, default 25
+        Lower percentile for IQR
+    Q2 : int, default 75
+        Upper percentile for IQR
+    Returns
+    -------
+    spectra_norm : 2D array
+        Robust-scaled spectra
+    """
+    spectra_norm = np.zeros_like(spectra)
+    for i in range(spectra.shape[1]):
+        iqr = np.percentile(spectra[:, i], Q2) - np.percentile(spectra[:, i], Q1)
+        if iqr == 0:
+            iqr = 1.0
+        spectra_norm[:, i] = (spectra[:, i] - np.median(spectra[:, i])) / iqr
+    return spectra_norm
+
+def derivative(spectra, order=1):
+    """
+    Compute the nth order derivative along each column of the spectra.
+    Parameters
+    ----------
+    spectra : 2D array (n_samples, n_features)
+        Spectral data
+    order : int, default 1
+        Order of the derivative
+    Returns
+    -------
+    spectra_norm : 2D array
+        Derivative of spectra
+    """
+    spectra_norm = np.copy(spectra)
+    for _ in range(order):
+        spectra_norm = np.gradient(spectra_norm, axis=0)
+    return spectra_norm
+
+def log_1_r_norm(spectra):
+    """
+    Apply log(1/R) transformation to each value in the spectra.
+    Parameters
+    ----------
+    spectra : 2D array (n_samples, n_features)
+        Spectral data
+    Returns
+    -------
+    spectra_norm : 2D array
+        Log(1/R) transformed spectra
+    """
+    spectra_norm = np.log(1 / spectra)
+    return spectra_norm
+
+def baseline_correction_cube(cube, wavelengths_nm, order=1):
+    """
+    Applies baseline correction to a hyperspectral datacube using polynomial fitting.
+
+    Parameters
+    ----------
+    cube : 3-dim numpy array
+        Hyperspectral datacube
+    wavelengths_nm : 1-dim numpy array
+        Wavelength array (in nanometers)
+    order : int, default 1
+        Polynomial order for the fit
+
+    Returns
+    -------
+    cube_corr : 3-dim numpy array
+        Baseline corrected datacube
+    """
+    rows, cols, bands = cube.shape
+    cube_corr = np.zeros_like(cube)
+    X = np.vander(wavelengths_nm, N=order+1)
+    for i in range(rows):
+        for j in range(cols):
+            y = cube[i, j, :]
+            coeffs, *_ = np.linalg.lstsq(X, y, rcond=None)
+            baseline = X @ coeffs
+            cube_corr[i, j, :] = y - baseline
+    return cube_corr
+
+# --- Utility functions added for astrogea/__init__.py compatibility ---
+def auto_stretch_rgb(image: np.ndarray) -> np.ndarray:
+    """
+    Apply automatic contrast stretching to an RGB image.
+    Args:
+        image: Input RGB image as a numpy array (H, W, 3)
+    Returns:
+        Stretched RGB image as numpy array (H, W, 3)
+    """
+    # Simple implementation: stretch each channel to [0, 255]
+    stretched = np.zeros_like(image)
+    for c in range(3):
+        channel = image[..., c]
+        min_val, max_val = np.percentile(channel, 2), np.percentile(channel, 98)
+        stretched[..., c] = np.clip((channel - min_val) * 255.0 / (max_val - min_val + 1e-8), 0, 255)
+    return stretched.astype(np.uint8)
+
+def unison_shuffled_copies(a: np.ndarray, b: np.ndarray, seed: int = None):
+    """
+    Shuffle two arrays in unison along the first axis.
+    Args:
+        a: First array
+        b: Second array
+        seed: Optional random seed
+    Returns:
+        Tuple of shuffled arrays
+    """
+    assert len(a) == len(b)
+    rng = np.random.default_rng(seed)
+    p = rng.permutation(len(a))
+    return a[p], b[p]
+
+def merge_datacubes(cubes, axis: int = -1, use_dask: bool = False) -> np.ndarray:
+    """
+    Unisce una lista di datacube lungo l'asse specificato.
+    Args:
+        cubes: lista di array da unire
+        axis: asse lungo cui concatenare
+        use_dask: ignorato, per compatibilità
+    Returns:
+        Datacube unito
+    """
+    return np.concatenate(cubes, axis=axis)
+
+def spetial_merge_datacubes(cube1: np.ndarray, cube2: np.ndarray, use_dask: bool = False) -> np.ndarray:
+    """
+    Merge two datacubes along the spatial (row) axis.
+    Args:
+        cube1: First datacube (H1, W, B)
+        cube2: Second datacube (H2, W, B)
+        use_dask: Ignored, for compatibility
+    Returns:
+        Merged datacube (H1+H2, W, B)
+    """
+    assert cube1.shape[1:] == cube2.shape[1:]
+    return np.concatenate([cube1, cube2], axis=0)
+
+def hypermerge_spatial(cubes, use_dask: bool = False):
+    """
+    Restituisce la media tra i datacube forniti (shape uguale a un singolo cubo), come xarray.DataArray con metadati WCS fittizi.
+    Args:
+        cubes: lista di array (numpy, Dask o xarray) di shape uguale
+        use_dask: ignorato
+    Returns:
+        xarray.DataArray
+    """
+    # Estrai dati, dims e coords dal primo cubo se xarray
+    if isinstance(cubes[0], xr.DataArray):
+        datas = [c.data for c in cubes]
+        dims = cubes[0].dims
+        coords = cubes[0].coords
+    else:
+        datas = cubes
+        dims = None
+        coords = None
+    # Calcola la media
+    if hasattr(datas[0], 'mean'):
+        merged = sum(datas) / len(datas)
+    else:
+        merged = np.mean(datas, axis=0)
+    if dims is not None and coords is not None:
+        da_out = xr.DataArray(merged, dims=dims, coords=coords)
+    else:
+        da_out = xr.DataArray(merged)
+    return _add_fake_wcs_attrs(da_out)
