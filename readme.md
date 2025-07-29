@@ -13,7 +13,6 @@ AstroGea is a Python-based framework designed to bridge the realms of astrophysi
 <!-- - Astrogeological Analysis: Study the interplay between cosmic events and geological phenomena. -->
 - Planetary Science: Analyze planetary compositions and structures using integrated datasets.
 - Educational Tools: Develop interactive modules for teaching concepts in astrophysics and geology.
-- Spectral Analysis: Process and analyze hyperspectral data from various sources.
 
 ## Core Features
 
@@ -44,7 +43,7 @@ result, x = continuum_removal(img, wavelength, MIN, MAX, use_dask=True)
 ```
 
 ### WCS Integration
-Convert continuum removal results to xarray.DataArray with optional WCS coordinates:
+Convert continuum removal results to an xarray.DataArray with optional WCS coordinates:
 
 ```python
 from astrogea.core import continuum_to_xarray_wcs
@@ -119,26 +118,26 @@ print("Mafic band parameters (Dask, parallel):\n", mafic_map_dask.compute())
 **Returns:**
 - `mafic_map`: array (Y, X, nbands*5) with band parameters for each pixel.
 
-See function docstring for details on parameters and output.
+See the function docstring for details on parameters and output.
 
 ### Smoothing Moving Average
-La funzione `smoothing_moving_average` applica una media mobile (moving average) su un cubo iperspettrale nell'intervallo di lunghezze d'onda specificato. Supporta sia array NumPy che Dask per il calcolo parallelo.
+The `smoothing_moving_average` function applies a moving average to a hyperspectral cube within the specified wavelength range. It supports both NumPy and Dask arrays for parallel computation.
 
 ```python
 from astrogea.core import smoothing_moving_average
 import numpy as np
 
-# Dati di esempio
+# Example data
 img = np.random.rand(5, 5, 20) * 1000  # (Y, X, bands)
 wavelength = np.linspace(1000, 2500, 20)
 MIN, MAX = 1200, 2200
 window_size = 5
 
-# Applica smoothing moving average
+# Apply smoothing moving average
 result, x = smoothing_moving_average(img, wavelength, MIN, MAX, window_size=window_size)
 ```
 
-**Con Dask (calcolo parallelo):**
+**With Dask (parallel computation):**
 ```python
 import dask.array as da
 from astrogea.core import smoothing_moving_average
@@ -147,14 +146,14 @@ img = da.from_array(np.random.rand(5, 5, 20) * 1000, chunks=(2, 2, 20))
 result, x = smoothing_moving_average(img, wavelength, MIN, MAX, window_size=5, use_dask=True)
 ```
 
-**Restituisce:**
-- `result`: cubo smoothato (Y, X, n_bands)
-- `x`: lunghezze d'onda corrispondenti
+**Returns:**
+- `result`: smoothed cube (Y, X, n_bands)
+- `x`: corresponding wavelengths
 
-### Coregistrazione Spettrale
-La funzione `coregister_spectra` permette di riallineare (coregistrare) uno spettro su una griglia di lunghezze d'onda di riferimento tramite interpolazione lineare. Compatibile sia con array NumPy che Dask.
+### Spectral Coregistration
+The `coregister_spectra` function allows you to realign (coregister) a spectrum onto a reference wavelength grid using linear interpolation. Compatible with both NumPy and Dask arrays as input.
 
-**Esempio d'uso:**
+**Example usage:**
 ```python
 from astrogea.core import coregister_spectra
 import numpy as np
@@ -163,13 +162,13 @@ reference_wavelengths = np.linspace(1000, 2000, 10)
 new_wavelengths = np.linspace(950, 2050, 12)
 new_reflectance = np.sin(new_wavelengths/300)
 
-# Riallinea lo spettro sulla griglia di riferimento
+# Realign the spectrum onto the reference grid
 interpolated = coregister_spectra(reference_wavelengths, new_wavelengths, new_reflectance)
 print(interpolated)
 ```
 
-**Restituisce:**
-- Un array di riflettanza interpolato sulla griglia di riferimento.
+**Returns:**
+- An array of reflectance values interpolated onto the reference_wavelengths grid.
 
 ## Function Details
 
@@ -210,28 +209,28 @@ def continuum_removal(img, wavelength, MIN, MAX, interp='linear', force=False,
 ```python
 def smoothing_moving_average(img, wavelength, MIN, MAX, window_size=3, use_dask=False):
     """
-    Applica uno smoothing moving average (media mobile) su un cubo iperspettrale nell'intervallo di lunghezze d'onda specificato.
-    Supporta calcolo parallelo con Dask se use_dask=True.
+    Applies a moving average smoothing to a hyperspectral cube within the specified wavelength range.
+    Supports parallel computation with Dask if use_dask=True.
 
     Parameters
     ----------
     img : np.ndarray or dask.array.Array
-        Cubo iperspettrale (Y, X, bands)
+        Hyperspectral cube (Y, X, bands)
     wavelength : np.ndarray
-        Array delle lunghezze d'onda (bands,)
+        Array of wavelengths (bands,)
     MIN, MAX : float
-        Limiti di lunghezza d'onda per l'analisi
+        Wavelength range limits for analysis
     window_size : int, default 3
-        Dimensione della finestra per la media mobile
+        Window size for the moving average
     use_dask : bool, default False
-        Se True usa Dask per il calcolo parallelo
+        If True, uses Dask for parallel computation
 
     Returns
     -------
     result : np.ndarray or dask.array.Array
-        Cubo smoothato (Y, X, n_bands)
+        Smoothed cube (Y, X, n_bands)
     x : np.ndarray
-        Lunghezze d'onda corrispondenti
+        Corresponding wavelengths
     """
 ```
 
@@ -239,22 +238,22 @@ def smoothing_moving_average(img, wavelength, MIN, MAX, window_size=3, use_dask=
 ```python
 def coregister_spectra(reference_wavelengths, new_wavelengths, new_reflectance):
     """
-    Interpola i valori di riflettanza di uno spettro su una griglia di lunghezze d'onda di riferimento.
-    Compatibile sia con array NumPy che Dask come input.
+    Interpolates the reflectance values of a spectrum onto a reference wavelength grid.
+    Compatible with both NumPy and Dask arrays as input.
 
     Parameters
     ----------
     reference_wavelengths : array-like
-        Array dei valori di lunghezza d'onda target (griglia di riferimento)
+        Array of target wavelength values (reference grid)
     new_wavelengths : array-like
-        Array delle lunghezze d'onda originali dello spettro da riallineare
+        Array of original wavelengths of the spectrum to be realigned
     new_reflectance : array-like
-        Array dei valori di riflettanza corrispondenti a new_wavelengths
+        Array of reflectance values corresponding to new_wavelengths
 
     Returns
     -------
     interpolated_reflectance : np.ndarray
-        Valori di riflettanza interpolati sulla griglia reference_wavelengths
+        Reflectance values interpolated onto the reference_wavelengths grid
     """
 ```
 
@@ -289,24 +288,118 @@ corrected = baseline_correction_cube(cube, wavelengths_nm, order=1)
 ```
 
 ### auto_stretch_rgb
-Automatically stretches each band of a hyperspectral image for RGB visualization.
+Applies automatic contrast stretching to an RGB image.
 ```python
 from astrogea.core import auto_stretch_rgb
-stretched = auto_stretch_rgb(img_sr, product_names)
+import numpy as np
+
+img = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
+stretched = auto_stretch_rgb(img)
 ```
 
 ### unison_shuffled_copies
-Shuffles two arrays in unison using a fixed seed.
+Synchronously shuffles two arrays along the first dimension.
 ```python
 from astrogea.core import unison_shuffled_copies
-shuffled_spectra, shuffled_indexes = unison_shuffled_copies(spectra, indexes)
+import numpy as np
+
+a = np.arange(10).reshape(5, 2)
+b = np.arange(5)
+a_shuf, b_shuf = unison_shuffled_copies(a, b)
 ```
 
-### merge_datacubes, spetial_merge_datacubes, hypermerge_spatial
-Utilities for merging multiple hyperspectral datacubes along different axes.
+### merge_datacubes
+Merges a list of datacubes along the specified axis (default: 0).
+Returns an `xarray.DataArray` with WCS metadata.
 ```python
-from astrogea.core import merge_datacubes, spetial_merge_datacubes, hypermerge_spatial
-merged = merge_datacubes([cube1, cube2], axis=2)
-spatial_merged = spetial_merge_datacubes([cube1, cube2])
-hyper_merged = hypermerge_spatial([cube1, cube2])
+from astrogea.core import merge_datacubes
+import numpy as np
+
+cube1 = np.random.rand(2, 2, 3)
+cube2 = np.random.rand(2, 2, 3)
+merged = merge_datacubes([cube1, cube2], axis=0)
+```
+
+### spetial_merge_datacubes
+Merges two datacubes along the spatial axis (first dimension).
+Returns an `xarray.DataArray` with WCS metadata.
+```python
+from astrogea.core import spetial_merge_datacubes
+import numpy as np
+
+cube1 = np.random.rand(2, 2, 3)
+cube2 = np.random.rand(3, 2, 3)
+merged = spetial_merge_datacubes(cube1, cube2)
+```
+
+### hypermerge_spatial
+Returns the mean of a list of datacubes (same shape as a single cube), as an `xarray.DataArray` with WCS metadata.
+```python
+from astrogea.core import hypermerge_spatial
+import numpy as np
+
+cube1 = np.random.rand(2, 2, 3)
+cube2 = np.random.rand(2, 2, 3)
+merged = hypermerge_spatial([cube1, cube2])
+```
+
+## xarray Output and WCS Metadata
+All main functions return `xarray.DataArray` objects with WCS metadata. If WCS metadata is not available, a dummy WCS header is added to ensure compatibility and interoperability.
+
+## Utility Functions
+
+### auto_stretch_rgb
+Applies automatic contrast stretching to an RGB image.
+```python
+from astrogea.core import auto_stretch_rgb
+import numpy as np
+
+img = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
+stretched = auto_stretch_rgb(img)
+```
+
+### unison_shuffled_copies
+Synchronously shuffles two arrays along the first dimension.
+```python
+from astrogea.core import unison_shuffled_copies
+import numpy as np
+
+a = np.arange(10).reshape(5, 2)
+b = np.arange(5)
+a_shuf, b_shuf = unison_shuffled_copies(a, b)
+```
+
+### merge_datacubes
+Merges a list of datacubes along the specified axis (default: 0).
+Returns an `xarray.DataArray` with WCS metadata.
+```python
+from astrogea.core import merge_datacubes
+import numpy as np
+
+cube1 = np.random.rand(2, 2, 3)
+cube2 = np.random.rand(2, 2, 3)
+merged = merge_datacubes([cube1, cube2], axis=0)
+```
+
+### spetial_merge_datacubes
+Merges two datacubes along the spatial axis (first dimension).
+Returns an `xarray.DataArray` with WCS metadata.
+```python
+from astrogea.core import spetial_merge_datacubes
+import numpy as np
+
+cube1 = np.random.rand(2, 2, 3)
+cube2 = np.random.rand(3, 2, 3)
+merged = spetial_merge_datacubes(cube1, cube2)
+```
+
+### hypermerge_spatial
+Returns the mean of a list of datacubes (same shape as a single cube), as an `xarray.DataArray` with WCS metadata.
+```python
+from astrogea.core import hypermerge_spatial
+import numpy as np
+
+cube1 = np.random.rand(2, 2, 3)
+cube2 = np.random.rand(2, 2, 3)
+merged = hypermerge_spatial([cube1, cube2])
 ```
