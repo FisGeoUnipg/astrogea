@@ -34,9 +34,9 @@ def test_spectral_array_wrapper():
     xarray_data = wrapper.to_xarray()
     
     assert isinstance(xarray_data, xr.DataArray)
-    assert xarray_data.dims == ('wavelength', 'y', 'x')
+    assert xarray_data.dims == ('line', 'sample', 'wavelength')
     assert len(xarray_data.coords['wavelength']) == 10
-    assert xarray_data.shape == (10, 5, 5)
+    assert xarray_data.shape == (5, 5, 10)
 
 def test_spectral_array_wrapper_invalid_shape():
     """Test SpectralArrayWrapper with invalid data shape"""
@@ -280,3 +280,26 @@ def test_continuum_removal_save_csv_textual():
             print(f.readline().rstrip())
     print("--- ... ---")
     assert os.path.exists(out_path)
+
+def test_crism_wcs_dimension_order(tmp_path):
+    """Test che l'ordine delle dimensioni sia (line, sample, wavelength) per spectral_data e (line, sample, if_band) per geometry_angles."""
+    # Dati sintetici minimi
+    import numpy as np
+    from astrogea.core import process_crism_file
+    # Simula input (usa file veri in un test reale)
+    sr_base = "tests/data/fake_sr"
+    if_base = "tests/data/fake_if"
+    output = tmp_path / "out.nc"
+
+    # Salta se i file non esistono (protezione per CI)
+    if not os.path.exists(f"{sr_base}.hdr") or not os.path.exists(f"{if_base}.hdr"):
+        import pytest
+        pytest.skip("File ENVI non disponibili per il test.")
+
+    ds = process_crism_file(sr_base, if_base, str(output))
+    assert isinstance(ds, xr.Dataset)
+    # Verifica che le variabili abbiano le dimensioni corrette
+    assert "spectral_data" in ds
+    assert "geometry_angles" in ds
+    assert ds["spectral_data"].dims == ("line", "sample", "wavelength")
+    assert ds["geometry_angles"].dims == ("line", "sample", "if_band")

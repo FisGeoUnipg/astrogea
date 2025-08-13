@@ -450,21 +450,21 @@ def continuum_to_xarray_wcs(result, x, parsed_map_info=None):
     from .wcs_utils import create_wcs_from_parsed_info, create_wcs_header_dict
     y, x_dim, bands = result.shape
     coords = {
-        'y': np.arange(y),
-        'x': np.arange(x_dim),
+        'line': np.arange(y),
+        'sample': np.arange(x_dim),
         'wavelength': x
     }
     da = xr.DataArray(
         data=result,
-        dims=["y", "x", "wavelength"],
+        dims=["line", "sample", "wavelength"],
         coords=coords,
         name="continuum_removed"
     )
     attrs = {}
     if parsed_map_info is not None:
-        wcs_obj = create_wcs_from_parsed_info(parsed_info, (y, x_dim))
+        wcs_obj = create_wcs_from_parsed_info(parsed_map_info, (y, x_dim))
         if wcs_obj is not None:
-            wcs_header = create_wcs_header_dict(wcs_obj, parsed_info)
+            wcs_header = create_wcs_header_dict(wcs_obj, parsed_map_info)
             attrs['wcs_header_dict'] = str(wcs_header)
             attrs['has_wcs'] = 1
         else:

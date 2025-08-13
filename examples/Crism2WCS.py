@@ -97,8 +97,8 @@ class SpectralArrayWrapper:
 
 # --- Script Configuration ---
 script_start_time = time.perf_counter()
-base_file_name = "dati/FRT00006fbd/frt00006fbd_07_sr164j_mtr3"
-base_if_file_name = "dati/FRT00006fbd/frt00006fbd_07_if164j_mtr3"
+base_file_name = "data/frt00006fbd_07_if164j_mtr3"
+base_if_file_name = "data/frt00006fbd_07_if164j_mtr3"
 hdr_sr_file_path = f"{base_file_name}.hdr"
 img_sr_file_path = f"{base_file_name}.img"
 hdr_if_file_path = f"{base_if_file_name}.hdr"

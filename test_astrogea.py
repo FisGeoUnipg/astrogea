@@ -39,9 +39,9 @@ def test_spectral_array_wrapper():
         
         # Verifications
         assert isinstance(xarray_data, xr.DataArray)
-        assert xarray_data.dims == ('wavelength', 'y', 'x')
+        assert xarray_data.dims == ('line', 'sample', 'wavelength')
         assert len(xarray_data.coords['wavelength']) == 10
-        assert xarray_data.shape == (10, 5, 5)
+        assert xarray_data.shape == (5, 5, 10)
         
         print("✅ SpectralArrayWrapper works correctly!")
         return True
