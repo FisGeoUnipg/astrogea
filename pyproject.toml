@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "astrogea"
-version = "0.1.12"
+version = "0.1.13"
 description = "Processing and georeferencing of CRISM data in WCS and NetCDF format. Includes mafic band analysis."
 readme = "README.md"
 authors = [
@@ -39,10 +39,10 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/tuutente/astrogea"
-Documentation = "https://github.com/tuutente/astrogea#readme"
-Repository = "https://github.com/tuutente/astrogea.git"
-Issues = "https://github.com/tuutente/astrogea/issues"
+Homepage = "https://github.com/FisGeoUnipg/astrogea"
+Documentation = "https://github.com/FisGeoUnipg/astrogea#readme"
+Repository = "https://github.com/FisGeoUnipg/astrogea.git"
+Issues = "https://github.com/FisGeoUnipg/astrogea/issues"
 
 [project.scripts]
 astrogea = "astrogea.cli:main"
