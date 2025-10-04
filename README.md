@@ -30,7 +30,7 @@ pip install astrogea[all]
 
 ### Installation from Source
 ```bash
-git clone https://github.com/tuutente/astrogea.git
+git clone https://github.com/FisGeoUnipg/astrogea.git
 cd astrogea
 pip install -e .
 ```
@@ -515,9 +515,9 @@ This project is distributed under the MIT license. See `LICENSE` for more detail
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/tuutente/astrogea/issues)
+- **Issues**: [GitHub Issues](https://github.com/FisGeoUnipg/astrogea/issues)
 - **Email**: [valter.amorini@i4m.it](mailto:valter.amorini@i4m.it)
-- **Documentation**: [GitHub Wiki](https://github.com/tuutente/astrogea/wiki)
+- **Documentation**: [GitHub Wiki](https://github.com/FisGeoUnipg/astrogea/wiki)
 
 ---
 
