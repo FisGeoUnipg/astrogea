@@ -23,7 +23,7 @@ def test_coregister_spectra_linear():
         d_new_reflectance = da.from_array(new_reflectance, chunks=3)
         # coregister_spectra deve funzionare anche con input Dask (convertiti a NumPy internamente)
         d_result = coregister_spectra(d_reference_wavelengths, d_new_wavelengths, d_new_reflectance)
-        # Se il risultato è Dask, computa
+        # If the result is Dask, compute it
         if hasattr(d_result, 'compute'):
             d_result = d_result.compute()
         np.testing.assert_allclose(d_result, expected) 

@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dask-scheduler
+  namespace: astrogea
+  labels:
+    app: dask-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dask-scheduler
+  template:
+    metadata:
+      labels:
+        app: dask-scheduler
+    spec:
+      containers:
+      - name: dask-scheduler
+        image: daskdev/dask:latest
+        command: ["dask-scheduler"]
+        args:
+          - "--host"
+          - "0.0.0.0"
+          - "--port"
+          - "8786"
+          - "--dashboard-address"
+          - ":8787"
+          - "--dashboard"
+          - "true"
+        ports:
+        - containerPort: 8786
+          name: scheduler
+        - containerPort: 8787
+          name: dashboard
+        env:
+        - name: DASK_CONFIG
+          value: "/opt/dask/dask.yaml"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        volumeMounts:
+        - name: dask-config
+          mountPath: /opt/dask
+        - name: data-volume
+          mountPath: /data
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8786
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8786
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: dask-config
+        configMap:
+          name: astrogea-config
+          items:
+          - key: dask-scheduler.yaml
+            path: dask.yaml
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: astrogea-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dask-scheduler
+  namespace: astrogea
+  labels:
+    app: dask-scheduler
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8786
+    targetPort: 8786
+    name: scheduler
+  - port: 8787
+    targetPort: 8787
+    name: dashboard
+  selector:
+    app: dask-scheduler

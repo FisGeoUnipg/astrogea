@@ -12,41 +12,28 @@ class SpectralArrayWrapper:
         if len(shape) != 3:
             raise ValueError("Data must be 3D (bands, rows, cols)")
 
-        # Determine dimension order
+        # Determine input format and produce output with dims ('line', 'sample', 'wavelength')
         if shape[0] == len(self.wavelengths):
-            # Format: (wavelength, y, x)
-            bands, rows, cols = shape
-            dims = [self.wavelength_dim, 'y', 'x']
-            coords = {self.wavelength_dim: self.wavelengths}
+            # Input format: (wavelength, line, sample) -> transpose to (line, sample, wavelength)
+            _, rows, cols = shape
+            data_out = np.transpose(self.data, (1, 2, 0))
         elif shape[2] == len(self.wavelengths):
-            # Format: (y, x, wavelength) - CRISM case
-            rows, cols, bands = shape
-            # Transpose to get (wavelength, y, x)
-            data_transposed = np.transpose(self.data, (2, 0, 1))
-            dims = [self.wavelength_dim, 'y', 'x']
-            coords = {self.wavelength_dim: self.wavelengths}
-            return xr.DataArray(
-                data_transposed,
-                dims=dims,
-                coords=coords
-            )
+            # Input format: (line, sample, wavelength) -> already correct
+            rows, cols, _ = shape
+            data_out = self.data
         elif shape[1] == len(self.wavelengths):
-            # Format: (y, wavelength, x)
-            rows, bands, cols = shape
-            # Transpose to get (wavelength, y, x)
-            data_transposed = np.transpose(self.data, (1, 0, 2))
-            dims = [self.wavelength_dim, 'y', 'x']
-            coords = {self.wavelength_dim: self.wavelengths}
-            return xr.DataArray(
-                data_transposed,
-                dims=dims,
-                coords=coords
-            )
+            # Input format: (line, wavelength, sample) -> transpose to (line, sample, wavelength)
+            rows, _, cols = shape
+            data_out = np.transpose(self.data, (0, 2, 1))
         else:
-            raise ValueError(f"Cannot determine dimension order. Data shape: {shape}, wavelengths: {len(self.wavelengths)}")
+            raise ValueError(
+                f"Cannot determine dimension order. Data shape: {shape}, wavelengths: {len(self.wavelengths)}"
+            )
 
-        return xr.DataArray(
-            self.data,
-            dims=dims,
-            coords=coords
-        )
+        dims = ['line', 'sample', self.wavelength_dim]
+        coords = {
+            'line': np.arange(rows),
+            'sample': np.arange(cols),
+            self.wavelength_dim: self.wavelengths,
+        }
+        return xr.DataArray(data_out, dims=dims, coords=coords)

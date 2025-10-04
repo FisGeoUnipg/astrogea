@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dask-workers
+  namespace: astrogea
+  labels:
+    app: dask-workers
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: dask-workers
+  template:
+    metadata:
+      labels:
+        app: dask-workers
+    spec:
+      containers:
+      - name: dask-worker
+        image: astrogea:latest  # Custom image with astrogea
+        command: ["dask-worker"]
+        args:
+          - "tcp://dask-scheduler:8786"
+          - "--nthreads"
+          - "2"
+          - "--nprocs"
+          - "1"
+          - "--memory-limit"
+          - "4GB"
+          - "--dashboard-address"
+          - ":8787"
+        ports:
+        - containerPort: 8787
+          name: dashboard
+        env:
+        - name: DASK_CONFIG
+          value: "/opt/dask/dask.yaml"
+        - name: ASTROGEA_CONFIG
+          value: "/opt/astrogea/config.yaml"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        volumeMounts:
+        - name: dask-config
+          mountPath: /opt/dask
+        - name: astrogea-config
+          mountPath: /opt/astrogea
+        - name: data-volume
+          mountPath: /data
+        - name: cache-volume
+          mountPath: /cache
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import requests; requests.get('http://localhost:8787/health', timeout=5)"
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import requests; requests.get('http://localhost:8787/health', timeout=5)"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: dask-config
+        configMap:
+          name: astrogea-config
+          items:
+          - key: dask-scheduler.yaml
+            path: dask.yaml
+      - name: astrogea-config
+        configMap:
+          name: astrogea-config
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: astrogea-data-pvc
+      - name: cache-volume
+        emptyDir:
+          sizeLimit: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dask-workers
+  namespace: astrogea
+  labels:
+    app: dask-workers
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8787
+    targetPort: 8787
+    name: dashboard
+  selector:
+    app: dask-workers

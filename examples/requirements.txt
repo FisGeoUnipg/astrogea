@@ -4,4 +4,5 @@ xarray
 matplotlib
 netCDF4 #legge xarray
 pdoc #per fare documentazione automatica
+boto3 #minio access
 dask[complete]

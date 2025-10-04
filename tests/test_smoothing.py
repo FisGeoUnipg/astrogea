@@ -14,7 +14,7 @@ def test_smoothing_numpy():
     wavelength = np.arange(5)
     MIN, MAX = 1, 4
     window_size = 3
-    # L'output atteso è sempre 1, perché la media di tutti 1 è 1
+    # The expected output is always 1, because the average of all 1s is 1
     result, x = smoothing_moving_average(img, wavelength, MIN, MAX, window_size=window_size)
     assert result.shape == (2, 2, 3)
     np.testing.assert_allclose(result, 1)

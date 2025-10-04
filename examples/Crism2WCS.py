@@ -55,7 +55,7 @@ def parse_envi_map_info_list(map_info_list):
             except ValueError: info['datum'] = parts[potential_datum_idx]
         if info['units'] == 'm': info['ref_easting'], info['ref_northing'] = info['ref_coord1'], info['ref_coord2']
         elif info['units'] == 'deg': info['ref_lon'], info['ref_lat'] = info['ref_coord1'], info['ref_coord2']
-        # print(f"    Parsed map info list: {info}") # Riduci verbosità
+        # print(f"    Parsed map info list: {info}") # Reduce verbosity
         return info
     except (ValueError, IndexError, KeyError) as e: print(f"    ERROR parsing 'map info' list: {e}"); return None
 
@@ -71,7 +71,7 @@ def create_wcs_from_parsed_info(parsed_info, shape):
         if units_lower == 'm' or units_lower == 'meters':
             w.wcs.crval = [parsed_info['ref_easting'], parsed_info['ref_northing']]
             w.wcs.cunit = ['m', 'm']; ctype1, ctype2 = 'XMETR', 'YMETR'
-            # print(f"    INFO: WCS CTYPE generici ('XMETR','YMETR') assegnati per unità metri.") # Riduci verbosità
+            # print(f"    INFO: Generic WCS CTYPE ('XMETR','YMETR') assigned for meter units.") # Reduce verbosity
         elif units_lower == 'deg' or units_lower == 'degree' or units_lower == 'degrees':
              w.wcs.crval = [parsed_info['ref_lon'], parsed_info['ref_lat']]
              w.wcs.cunit = ['deg', 'deg']; ctype1, ctype2 = 'OLON', 'OLAT'
@@ -84,7 +84,7 @@ def create_wcs_from_parsed_info(parsed_info, shape):
             print(f"   ERROR: Unità '{units}' non gestite."); return None
         w.wcs.ctype = [ctype1, ctype2]
         print(f"--> OK: Oggetto WCS creato (CTYPE={w.wcs.ctype}, CUNIT={w.wcs.cunit})")
-        # print(f"    WCS CRVAL: {w.wcs.crval}, CDELT: {w.wcs.cdelt}, CRPIX: {w.wcs.crpix}") # Riduci verbosità
+        # print(f"    WCS CRVAL: {w.wcs.crval}, CDELT: {w.wcs.cdelt}, CRPIX: {w.wcs.crpix}") # Reduce verbosity
         return w
     except (KeyError, Exception) as e:
         print(f"   ERROR: Creazione WCS fallita - {type(e).__name__}: {e}")
@@ -97,8 +97,8 @@ class SpectralArrayWrapper:
 
 # --- Script Configuration ---
 script_start_time = time.perf_counter()
-base_file_name = "dati/FRT00006fbd/frt00006fbd_07_sr164j_mtr3"
-base_if_file_name = "dati/FRT00006fbd/frt00006fbd_07_if164j_mtr3"
+base_file_name = "data/frt00006fbd_07_if164j_mtr3"
+base_if_file_name = "data/frt00006fbd_07_if164j_mtr3"
 hdr_sr_file_path = f"{base_file_name}.hdr"
 img_sr_file_path = f"{base_file_name}.img"
 hdr_if_file_path = f"{base_if_file_name}.hdr"

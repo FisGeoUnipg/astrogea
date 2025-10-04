@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ServiceMonitor
+metadata:
+  name: astrogea-monitor
+  namespace: astrogea
+spec:
+  selector:
+    matchLabels:
+      app: dask-scheduler
+  endpoints:
+  - port: dashboard
+    path: /metrics
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: astrogea-dashboard
+  namespace: astrogea
+data:
+  dashboard.json: |
+    {
+      "title": "Astrogea Cluster Dashboard",
+      "panels": [
+        {
+          "title": "Active Workers",
+          "type": "stat",
+          "targets": ["dask_workers_active"]
+        },
+        {
+          "title": "Memory Usage",
+          "type": "graph", 
+          "targets": ["dask_memory_usage"]
+        }
+      ]
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+

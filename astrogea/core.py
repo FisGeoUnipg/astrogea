@@ -450,21 +450,21 @@ def continuum_to_xarray_wcs(result, x, parsed_map_info=None):
     from .wcs_utils import create_wcs_from_parsed_info, create_wcs_header_dict
     y, x_dim, bands = result.shape
     coords = {
-        'y': np.arange(y),
-        'x': np.arange(x_dim),
+        'line': np.arange(y),
+        'sample': np.arange(x_dim),
         'wavelength': x
     }
     da = xr.DataArray(
         data=result,
-        dims=["y", "x", "wavelength"],
+        dims=["line", "sample", "wavelength"],
         coords=coords,
         name="continuum_removed"
     )
     attrs = {}
     if parsed_map_info is not None:
-        wcs_obj = create_wcs_from_parsed_info(parsed_info, (y, x_dim))
+        wcs_obj = create_wcs_from_parsed_info(parsed_map_info, (y, x_dim))
         if wcs_obj is not None:
-            wcs_header = create_wcs_header_dict(wcs_obj, parsed_info)
+            wcs_header = create_wcs_header_dict(wcs_obj, parsed_map_info)
             attrs['wcs_header_dict'] = str(wcs_header)
             attrs['has_wcs'] = 1
         else:
@@ -760,7 +760,7 @@ def center_norm(spectra):
     return spectra_norm
 
 def _add_fake_wcs_attrs(da):
-    """Aggiunge metadati WCS fittizi a un DataArray se non presenti."""
+    """Adds fake WCS metadata to a DataArray if not present."""
     if 'wcs' not in da.attrs:
         da.attrs['wcs'] = 'fake_wcs_header'
         da.attrs['has_wcs'] = 0
@@ -769,14 +769,14 @@ def _add_fake_wcs_attrs(da):
 
 def L1_norm(spectra, ord=1, use_dask: bool = False):
     """
-    Normalizza ogni colonna (asse 0) dello spettro secondo la norma L1 (o altra).
-    Restituisce sempre un xarray.DataArray con metadati WCS fittizi se non presenti.
+    Normalizes each column (axis 0) of the spectrum according to L1 norm (or other).
+    Always returns an xarray.DataArray with fake WCS metadata if not present.
     Args:
-        spectra: array 1D o 2D (numpy, Dask o xarray)
-        ord: ordine della norma (default 1)
-        use_dask: se True e l'input è Dask, usa Dask
+        spectra: 1D or 2D array (numpy, Dask or xarray)
+        ord: norm order (default 1)
+        use_dask: if True and input is Dask, use Dask
     Returns:
-        xarray.DataArray normalizzato
+        normalized xarray.DataArray
     """
     try:
         import dask.array as da
@@ -960,13 +960,13 @@ def unison_shuffled_copies(a: np.ndarray, b: np.ndarray, seed: int = None):
 
 def merge_datacubes(cubes, axis: int = -1, use_dask: bool = False) -> np.ndarray:
     """
-    Unisce una lista di datacube lungo l'asse specificato.
+    Merges a list of datacubes along the specified axis.
     Args:
-        cubes: lista di array da unire
-        axis: asse lungo cui concatenare
-        use_dask: ignorato, per compatibilità
+        cubes: list of arrays to merge
+        axis: axis along which to concatenate
+        use_dask: ignored, for compatibility
     Returns:
-        Datacube unito
+        Merged datacube
     """
     return np.concatenate(cubes, axis=axis)
 
@@ -985,14 +985,14 @@ def spetial_merge_datacubes(cube1: np.ndarray, cube2: np.ndarray, use_dask: bool
 
 def hypermerge_spatial(cubes, use_dask: bool = False):
     """
-    Restituisce la media tra i datacube forniti (shape uguale a un singolo cubo), come xarray.DataArray con metadati WCS fittizi.
+    Returns the average between the provided datacubes (same shape as a single cube), as xarray.DataArray with fake WCS metadata.
     Args:
-        cubes: lista di array (numpy, Dask o xarray) di shape uguale
-        use_dask: ignorato
+        cubes: list of arrays (numpy, Dask or xarray) with same shape
+        use_dask: ignored
     Returns:
         xarray.DataArray
     """
-    # Estrai dati, dims e coords dal primo cubo se xarray
+    # Extract data, dims and coords from first cube if xarray
     if isinstance(cubes[0], xr.DataArray):
         datas = [c.data for c in cubes]
         dims = cubes[0].dims
@@ -1001,7 +1001,7 @@ def hypermerge_spatial(cubes, use_dask: bool = False):
         datas = cubes
         dims = None
         coords = None
-    # Calcola la media
+    # Calculate the average
     if hasattr(datas[0], 'mean'):
         merged = sum(datas) / len(datas)
     else:

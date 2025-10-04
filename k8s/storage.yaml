@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: astrogea-data-pvc
+  namespace: astrogea
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: ""  # Use default storage class
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: astrogea-results-pvc
+  namespace: astrogea
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 500Gi
+  storageClassName: ""  # Use default storage class
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: astrogea-storage-secrets
+  namespace: astrogea
+type: Opaque
+data:
+  # Base64 encoded credentials (replace with actual values)
+  aws-access-key-id: ""  # echo -n "your-key" | base64
+  aws-secret-access-key: ""  # echo -n "your-secret" | base64
+  gcs-credentials: ""  # echo -n "your-json-credentials" | base64
+  azure-account-key: ""  # echo -n "your-account-key" | base64
