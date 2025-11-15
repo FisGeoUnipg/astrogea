@@ -13,9 +13,9 @@ import xarray as xr
 import matplotlib.pyplot as plt
 import warnings
 import traceback
-import ast # Per valutare il dizionario WCS dalla stringa
+import ast # To evaluate the WCS dictionary from string
 
-# Importa librerie WCS e plotting
+# Import WCS and plotting libraries
 try:
     from astropy.wcs import WCS
     from astropy.visualization.wcsaxes import WCSAxes
@@ -36,8 +36,8 @@ geometry_band_index_to_plot = 0    # IF band index (0=Incidence?, 1=Emission?, 2
 example_pixel_line = 250
 example_pixel_sample = 300
 # Example coordinates (MODIFY if necessary, use meters if WCS is in meters)
-example_coord_x = -7649000.0 # Esempio Easting (m) o Lon (deg)
-example_coord_y = 1110000.0  # Esempio Northing (m) o Lat (deg)
+example_coord_x = -7649000.0 # Example Easting (m) or Lon (deg)
+example_coord_y = 1110000.0  # Example Northing (m) or Lat (deg)
 
 # --- Start Process ---
 script_start_time = time.perf_counter()

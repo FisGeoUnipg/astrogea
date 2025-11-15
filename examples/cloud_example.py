@@ -57,17 +57,17 @@ def main():
         print("\n4. Download files from S3...")
         if storage_manager.exists(input_sr_s3):
             storage_manager.download_to_local(input_sr_s3, input_sr_local)
-            print(f"   ✅ Downloaded: {input_sr_s3}")
+            print(f"   Downloaded: {input_sr_s3}")
         else:
-            print(f"   ⚠️  File not found on S3: {input_sr_s3}")
+            print(f"   File not found on S3: {input_sr_s3}")
             print("   Using local example file...")
             input_sr_local = "data/frt00006fbd_07_sr164j_mtr3.hdr"
         
         if storage_manager.exists(input_if_s3):
             storage_manager.download_to_local(input_if_s3, input_if_local)
-            print(f"   ✅ Downloaded: {input_if_s3}")
+            print(f"   Downloaded: {input_if_s3}")
         else:
-            print(f"   ⚠️  File not found on S3: {input_if_s3}")
+            print(f"   File not found on S3: {input_if_s3}")
             print("   Using local example file...")
             input_if_local = "data/frt00006fbd_07_if164j_mtr3.hdr"
         
@@ -80,22 +80,22 @@ def main():
             use_dask=True
         )
         
-        print("   ✅ Processing completed!")
+        print("   Processing completed!")
         
         # 6. Upload result to S3
         print("\n6. Upload result to S3...")
         storage_manager.upload_from_local(output_local, output_s3)
-        print(f"   ✅ Result uploaded to: {output_s3}")
+        print(f"   Result uploaded to: {output_s3}")
         
         # 7. Cleanup temporary files
         print("\n7. Cleanup temporary files...")
         for temp_file in [input_sr_local, input_if_local, output_local]:
             if os.path.exists(temp_file) and temp_file.startswith('temp_'):
                 os.remove(temp_file)
-                print(f"   🗑️  Removed: {temp_file}")
+                print(f"   Removed: {temp_file}")
         
     except Exception as e:
-        print(f"   ❌ Error: {e}")
+        print(f"   Error: {e}")
         return
     
     print("\n=== Completed! ===")

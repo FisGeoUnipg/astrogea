@@ -5,6 +5,8 @@ Processes all .hdr files in the bucket and saves the results.
 """
 
 import os
+import argparse
+import logging
 import sys
 import time
 from pathlib import Path
@@ -17,6 +19,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from astrogea.config import create_config, Environment
 from astrogea.storage import create_storage_manager
 from astrogea.core import envi_to_xarray_wcs
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 # Thread-safe counter for progress
 progress_lock = threading.Lock()
@@ -59,7 +63,7 @@ def process_single_file(storage_manager, file_path, output_dir, temp_dir, file_i
         img_local = file_temp_dir / f"{Path(file_base).name}.img"
         
         # Download .hdr file
-        print(f"   [{file_index+1}/{total_files}] Download {file_path}...")
+        logging.info(f"[{file_index+1}/{total_files}] Download {file_path}...")
         storage_manager.download_to_local(f"s3://{file_path}", str(hdr_local))
         
         # Download .img file (if exists)
@@ -68,7 +72,7 @@ def process_single_file(storage_manager, file_path, output_dir, temp_dir, file_i
             storage_manager.download_to_local(f"s3://{img_s3}", str(img_local))
         
         # Processing
-        print(f"   [{file_index+1}/{total_files}] Processing {file_path}...")
+        logging.info(f"[{file_index+1}/{total_files}] Processing {file_path}...")
         ds = envi_to_xarray_wcs(str(hdr_local))
         
         # Save result
@@ -85,7 +89,7 @@ def process_single_file(storage_manager, file_path, output_dir, temp_dir, file_i
         # Update thread-safe counters
         with progress_lock:
             processed_count += 1
-            print(f"   ✅ [{processed_count}/{total_files}] Completed: {file_path}")
+            logging.info(f"[{processed_count}/{total_files}] Completed: {file_path}")
         
         # Cleanup temporary files
         import shutil
@@ -99,31 +103,39 @@ def process_single_file(storage_manager, file_path, output_dir, temp_dir, file_i
         
         with progress_lock:
             error_count += 1
-            print(f"   ❌ [{file_index+1}/{total_files}] Error {file_path}: {e}")
+            logging.error(f"[{file_index+1}/{total_files}] Error {file_path}: {e}")
         
         # Cleanup in case of error
         try:
             if 'file_temp_dir' in locals() and file_temp_dir.exists():
                 import shutil
                 shutil.rmtree(file_temp_dir)
-        except:
-            pass
+        except Exception as cleanup_error:
+            logging.warning(f"Cleanup failed for {file_path}: {cleanup_error}")
     
     return result
 
 def main():
-    print("=== Astrogea - S3/MinIO Batch Processing ===")
+    logging.info("Astrogea - S3/MinIO Batch Processing")
     
     # 1. S3/MinIO Configuration
-    print("\n1. S3/MinIO Configuration...")
+    parser = argparse.ArgumentParser(description="Batch process CRISM files from S3/MinIO")
+    parser.add_argument("--bucket", default=os.environ.get("AWS_BUCKET", ""), help="S3 bucket name")
+    parser.add_argument("--endpoint", default=os.environ.get("AWS_ENDPOINT_URL", ""), help="S3/MinIO endpoint URL")
+    parser.add_argument("--region", default=os.environ.get("AWS_REGION", "us-east-1"), help="AWS region")
+    parser.add_argument("--output", default="output_s3_batch", help="Output directory")
+    parser.add_argument("--temp", default="temp_s3_batch", help="Temporary directory")
+    parser.add_argument("--threads", type=int, default=4, help="Max parallel threads")
+    args = parser.parse_args()
+    logging.info("S3/MinIO Configuration...")
     
     s3_config = {
         's3': {
-            'bucket_name': 'vamorini-test',
-            'aws_access_key_id': 'aws_access_key_id',
-            'aws_secret_access_key': 'aws_secret_access_key',
-            'region': 'us-east-1',
-            'endpoint_url': 'https://minio-api.eagleprojects.cloud'
+            'bucket_name': args.bucket or os.environ.get('AWS_BUCKET', ''),
+            'aws_access_key_id': os.environ.get('AWS_ACCESS_KEY_ID'),
+            'aws_secret_access_key': os.environ.get('AWS_SECRET_ACCESS_KEY'),
+            'region': args.region,
+            'endpoint_url': args.endpoint or os.environ.get('AWS_ENDPOINT_URL')
         },
         'local': {
             'base_path': './data'
@@ -135,63 +147,63 @@ def main():
     config.storage.s3 = s3_config['s3']
     config.storage.local = s3_config['local']
     
-    print(f"   Bucket: {s3_config['s3']['bucket_name']}")
-    print(f"   Endpoint: {s3_config['s3']['endpoint_url']}")
+    logging.info(f"Bucket: {s3_config['s3']['bucket_name']}")
+    logging.info(f"Endpoint: {s3_config['s3']['endpoint_url']}")
     
     # 2. Storage Manager
-    print("\n2. Storage Manager Initialization...")
+    logging.info("Storage Manager Initialization...")
     try:
         storage_manager = create_storage_manager(config.get_storage_config())
-        print(f"   Available backends: {config.get_available_storage_backends()}")
+        logging.info(f"Available backends: {config.get_available_storage_backends()}")
     except Exception as e:
-        print(f"   ERROR: Unable to initialize storage manager: {e}")
+        logging.error(f"Unable to initialize storage manager: {e}")
         return
     
     # 3. List all files in bucket
-    print("\n3. S3 bucket scan...")
+    logging.info("S3 bucket scan...")
     try:
         s3_files = storage_manager.list_files("s3://")
-        print(f"   Found {len(s3_files)} total files in bucket")
+        logging.info(f"Found {len(s3_files)} total files in bucket")
     except Exception as e:
-        print(f"   ERROR: Unable to access S3 bucket: {e}")
+        logging.error(f"Unable to access S3 bucket: {e}")
         return
     
     # 4. Filter CRISM files (.hdr)
-    print("\n4. Filter CRISM files...")
+    logging.info("Filter CRISM files...")
     crism_files = [f for f in s3_files if f.endswith('.hdr')]
-    print(f"   Found {len(crism_files)} CRISM files (.hdr):")
+    logging.info(f"Found {len(crism_files)} CRISM files (.hdr):")
     
     for i, file_path in enumerate(crism_files):
-        print(f"     {i+1:3d}. {file_path}")
+        logging.debug(f"{i+1:3d}. {file_path}")
     
     if not crism_files:
-        print("   No CRISM files found in bucket")
+        logging.warning("No CRISM files found in bucket")
         return
     
     # 5. Processing configuration
-    print("\n5. Processing configuration...")
+    logging.info("Processing configuration...")
     
     # Output directory
-    output_dir = Path("output_s3_batch")
+    output_dir = Path(args.output)
     output_dir.mkdir(exist_ok=True)
     
     # Temporary directory
-    temp_dir = Path("temp_s3_batch")
+    temp_dir = Path(args.temp)
     temp_dir.mkdir(exist_ok=True)
     
     # Parallelism configuration
-    max_workers = min(4, len(crism_files))  # Maximum 4 parallel threads
+    max_workers = min(args.threads, len(crism_files))
     use_parallel = len(crism_files) > 1
     
-    print(f"   Output directory: {output_dir}")
-    print(f"   Temporary directory: {temp_dir}")
-    print(f"   Files to process: {len(crism_files)}")
-    print(f"   Parallel processing: {'Yes' if use_parallel else 'No'}")
+    logging.info(f"Output directory: {output_dir}")
+    logging.info(f"Temporary directory: {temp_dir}")
+    logging.info(f"Files to process: {len(crism_files)}")
+    logging.info(f"Parallel processing: {'Yes' if use_parallel else 'No'}")
     if use_parallel:
-        print(f"   Parallel threads: {max_workers}")
+        logging.info(f"Parallel threads: {max_workers}")
     
     # 6. Batch processing
-    print("\n6. Starting batch processing...")
+    logging.info("Starting batch processing...")
     start_time = time.time()
     
     results = []
@@ -248,39 +260,39 @@ def main():
     successful_count = len([r for r in results if r['status'] == 'success'])
     failed_count = len([r for r in results if r['status'] == 'error'])
     
-    print("\n7. Processing statistics...")
-    print(f"   Total time: {processing_time:.2f} seconds")
-    print(f"   Files processed successfully: {successful_count}")
-    print(f"   Files with errors: {failed_count}")
-    print(f"   Total files: {len(crism_files)}")
+    logging.info("Processing statistics...")
+    logging.info(f"Total time: {processing_time:.2f} seconds")
+    logging.info(f"Files processed successfully: {successful_count}")
+    logging.info(f"Files with errors: {failed_count}")
+    logging.info(f"Total files: {len(crism_files)}")
     
     if successful_count > 0:
         avg_time = processing_time / successful_count
-        print(f"   Average time per file: {avg_time:.2f} seconds")
+        logging.info(f"Average time per file: {avg_time:.2f} seconds")
     
     # 8. Result details
-    print("\n8. Result details...")
+    logging.info("Result details...")
     
     successful_files = [r for r in results if r['status'] == 'success']
     failed_files = [r for r in results if r['status'] == 'error']
     
     if successful_files:
-        print(f"\n   ✅ Files processed successfully ({len(successful_files)}):")
+        logging.info(f"Files processed successfully ({len(successful_files)}):")
         total_size = 0
         for result in successful_files:
             size_mb = result['file_size']
             total_size += size_mb
-            print(f"     - {result['file']} -> {result['output_file']} ({size_mb:.2f} MB)")
+            logging.info(f"- {result['file']} -> {result['output_file']} ({size_mb:.2f} MB)")
         
-        print(f"   📊 Total output size: {total_size:.2f} MB")
+        logging.info(f"Total output size: {total_size:.2f} MB")
     
     if failed_files:
-        print(f"\n   ❌ Files with errors ({len(failed_files)}):")
+        logging.info(f"Files with errors ({len(failed_files)}):")
         for result in failed_files:
-            print(f"     - {result['file']}: {result['error']}")
+            logging.info(f"- {result['file']}: {result['error']}")
     
     # 9. Upload results to S3 (optional)
-    print("\n9. Upload results to S3...")
+    logging.info("Upload results to S3...")
     upload_count = 0
     
     for result in successful_files:
@@ -290,48 +302,48 @@ def main():
                 original_name = Path(result['file']).stem
                 s3_result_path = f"processed_results/{original_name}_processed.nc"
                 
-                print(f"   Upload {result['output_file']} -> s3://{s3_result_path}")
+                logging.info(f"Upload {result['output_file']} -> s3://{s3_result_path}")
                 storage_manager.upload_from_local(result['output_file'], f"s3://{s3_result_path}")
                 upload_count += 1
         except Exception as e:
-            print(f"   ❌ Upload error {result['file']}: {e}")
+            logging.error(f"Upload error {result['file']}: {e}")
     
-    print(f"   ✅ {upload_count} files uploaded to S3")
+    logging.info(f"{upload_count} files uploaded to S3")
     
     # 10. Final cleanup
-    print("\n10. Final cleanup...")
+    logging.info("Final cleanup...")
     try:
         import shutil
         if temp_dir.exists():
             shutil.rmtree(temp_dir)
-            print("   Temporary directory removed")
+            logging.info("Temporary directory removed")
     except Exception as e:
-        print(f"   Warning: Unable to remove temporary directory: {e}")
+        logging.warning(f"Unable to remove temporary directory: {e}")
     
     # 11. Final summary
-    print("\n=== Final Summary ===")
-    print(f"📁 Files processed: {successful_count}/{len(crism_files)}")
-    print(f"📊 Success rate: {(successful_count/len(crism_files)*100):.1f}%")
-    print(f"⏱️  Total time: {processing_time:.2f} seconds")
-    print(f"💾 Results saved in: {output_dir}")
-    print(f"☁️  Files uploaded to S3: {upload_count}")
+    logging.info("Final Summary")
+    logging.info(f"Files processed: {successful_count}/{len(crism_files)}")
+    logging.info(f"Success rate: {(successful_count/len(crism_files)*100):.1f}%")
+    logging.info(f"Total time: {processing_time:.2f} seconds")
+    logging.info(f"Results saved in: {output_dir}")
+    logging.info(f"Files uploaded to S3: {upload_count}")
     
     if successful_count > 0:
-        print(f"🎯 Average time per file: {processing_time/successful_count:.2f} seconds")
+        logging.info(f"Average time per file: {processing_time/successful_count:.2f} seconds")
     
-    print("\n=== Completed! ===")
+    logging.info("Completed!")
 
 def test_s3_connection():
     """Test S3 connection without processing."""
-    print("=== S3 Connection Test ===")
+    logging.info("S3 Connection Test")
     
     s3_config = {
         's3': {
-            'bucket_name': 'vamorini-test',
-            'aws_access_key_id': '1ka7a5gUF5ZaNtHIBd7X',
-            'aws_secret_access_key': 'PVEA7bXbUaFDq6X69xHkFX82k6CB5wgIDUWCT3i1',
-            'region': 'us-east-1',
-            'endpoint_url': 'https://minio-api.eagleprojects.cloud'
+            'bucket_name': os.environ.get('AWS_BUCKET', ''),
+            'aws_access_key_id': os.environ.get('AWS_ACCESS_KEY_ID'),
+            'aws_secret_access_key': os.environ.get('AWS_SECRET_ACCESS_KEY'),
+            'region': os.environ.get('AWS_REGION', 'us-east-1'),
+            'endpoint_url': os.environ.get('AWS_ENDPOINT_URL')
         }
     }
     
@@ -342,34 +354,30 @@ def test_s3_connection():
         files = storage_manager.list_files("s3://")
         crism_files = [f for f in files if f.endswith('.hdr')]
         
-        print(f"✅ Connection successful!")
-        print(f"📁 Total files in bucket: {len(files)}")
-        print(f"🔬 CRISM files (.hdr): {len(crism_files)}")
+        logging.info("Connection successful!")
+        logging.info(f"Total files in bucket: {len(files)}")
+        logging.info(f"CRISM files (.hdr): {len(crism_files)}")
         
         # Show some CRISM files
-        print("\nFirst 10 CRISM files:")
+        logging.info("First 10 CRISM files:")
         for i, file_path in enumerate(crism_files[:10]):
-            print(f"  {i+1:2d}. {file_path}")
+            logging.info(f"{i+1:2d}. {file_path}")
         
         if len(crism_files) > 10:
-            print(f"     ... and {len(crism_files) - 10} more files")
+            logging.info(f"... and {len(crism_files) - 10} more files")
         
         return True
         
     except Exception as e:
-        print(f"❌ Connection error: {e}")
+        logging.error(f"Connection error: {e}")
         return False
 
 if __name__ == "__main__":
     # First test the connection
     if test_s3_connection():
-        print("\n" + "="*60)
+        logging.info("="*60)
         # If connection works, run batch processing
         main()
     else:
-        print("\nUnable to proceed without valid S3 connection.")
-        print("Check:")
-        print("1. Correct credentials (access_key and secret_key)")
-        print("2. Correct endpoint URL")
-        print("3. Bucket 'vamorini-test' exists and is accessible")
-        print("4. boto3 installed: pip install boto3")
+        logging.error("Unable to proceed without valid S3 connection.")
+        logging.error("Check: 1) credentials 2) endpoint URL 3) bucket access 4) boto3 installed")

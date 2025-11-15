@@ -70,19 +70,19 @@ def main():
             print(f"   Status: {status['status']}")
             
             if status['status'] == 'completed':
-                print("   ✅ Job completed!")
+                print("   Job completed!")
                 print(f"   Result files: {status.get('result_files', [])}")
                 break
             elif status['status'] == 'failed':
-                print(f"   ❌ Job failed: {status.get('error_message', 'Unknown error')}")
+                print(f"   Job failed: {status.get('error_message', 'Unknown error')}")
                 break
             elif status['status'] == 'running':
-                print("   🔄 Job running...")
+                print("   Job running...")
         
         time.sleep(10)  # Check every 10 seconds
     
     else:
-        print("   ⏰ Timeout reached")
+        print("   Timeout reached")
     
     # 5. Statistics
     print("\n5. Cluster statistics...")

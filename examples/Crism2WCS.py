@@ -18,15 +18,15 @@ import traceback
 import re
 import ast
 
-# Importa librerie necessarie
+# Import required libraries
 try: import spectral; from spectral import open_image; print(f"spectralpy {spectral.__version__}")
-except ImportError: print("ERRORE: pip install spectralpy"); exit()
+except ImportError: print("ERROR: pip install spectralpy"); exit()
 try: from astropy.wcs import WCS; from astropy.io import fits; from astropy import units as u; print("astropy")
-except ImportError: print("ERRORE: pip install astropy"); exit()
+except ImportError: print("ERROR: pip install astropy"); exit()
 try: import netCDF4; print("netCDF4"); NETCDF_ENGINE = 'netcdf4'
-except ImportError: print("ATTENZIONE: pip install netCDF4 (per salvare)"); NETCDF_ENGINE = None
+except ImportError: print("WARNING: pip install netCDF4 (to enable saving)"); NETCDF_ENGINE = None
 try: import dask; import dask.array as da; from dask.diagnostics import ProgressBar; print("dask"); USE_DASK = True
-except ImportError: print("ATTENZIONE: pip install \"dask[complete]\" (opzionale)"); USE_DASK = False
+except ImportError: print("WARNING: pip install \"dask[complete]\" (optional)"); USE_DASK = False
 
 # --- WCS Helper Functions ---
 def parse_envi_map_info_list(map_info_list):
@@ -79,15 +79,15 @@ def create_wcs_from_parsed_info(parsed_info, shape):
              elif 'equirectangular' in proj_name or 'plate carree' in proj_name: ctype1+='-CAR'; ctype2+='-CAR'
              elif 'lambert conformal' in proj_name: ctype1+='-LCC'; ctype2+='-LCC'
              elif 'polar stereographic' in proj_name: ctype1+='-STG'; ctype2+='-STG'
-             else: print(f"    WARN: Proiezione gradi '{proj_name}' non mappata a suffisso CTYPE FITS.")
+             else: print(f"    WARN: Degree projection '{proj_name}' not mapped to FITS CTYPE suffix.")
         else:
-            print(f"   ERROR: Unità '{units}' non gestite."); return None
+            print(f"   ERROR: Units '{units}' not handled."); return None
         w.wcs.ctype = [ctype1, ctype2]
-        print(f"--> OK: Oggetto WCS creato (CTYPE={w.wcs.ctype}, CUNIT={w.wcs.cunit})")
+        print(f"--> OK: WCS object created (CTYPE={w.wcs.ctype}, CUNIT={w.wcs.cunit})")
         # print(f"    WCS CRVAL: {w.wcs.crval}, CDELT: {w.wcs.cdelt}, CRPIX: {w.wcs.crpix}") # Reduce verbosity
         return w
     except (KeyError, Exception) as e:
-        print(f"   ERROR: Creazione WCS fallita - {type(e).__name__}: {e}")
+        print(f"   ERROR: WCS creation failed - {type(e).__name__}: {e}")
         return None
 
 # --- Spectral Wrapper Class ---

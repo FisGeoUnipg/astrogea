@@ -49,3 +49,12 @@ CMD ["python", "-m", "astrogea.worker"]
 
 
 
+
+
+
+
+
+
+
+
+

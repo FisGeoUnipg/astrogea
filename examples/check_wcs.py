@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Verifica se il file NetCDF contiene informazioni WCS.
+Check whether the NetCDF file contains WCS information.
 """
 
 import os
@@ -12,54 +12,54 @@ import xarray as xr
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 def check_wcs_info(file_path):
-    """Verifica informazioni WCS nel file NetCDF."""
+    """Check WCS information in the NetCDF file."""
     
     if not os.path.exists(file_path):
-        print(f"❌ File non trovato: {file_path}")
+        print(f"File not found: {file_path}")
         return
     
-    print(f"=== Analisi WCS: {file_path} ===")
+    print(f"=== WCS Analysis: {file_path} ===")
     
     try:
-        # Carica dataset
+        # Load dataset
         ds = xr.open_dataset(file_path)
         
-        print(f"\n📊 Informazioni Dataset:")
-        print(f"   Dimensioni: {ds.dims}")
-        print(f"   Variabili: {list(ds.data_vars.keys())}")
-        print(f"   Coordinate: {list(ds.coords.keys())}")
+        print(f"\nDataset Information:")
+        print(f"   Dimensions: {ds.dims}")
+        print(f"   Variables: {list(ds.data_vars.keys())}")
+        print(f"   Coordinates: {list(ds.coords.keys())}")
         
-        print(f"\n🌍 Informazioni WCS:")
+        print(f"\nWCS Information:")
         
-        # Controlla flag WCS
+        # Check WCS flag
         has_wcs = ds.attrs.get('has_wcs', 0)
         print(f"   Flag WCS: {has_wcs}")
         
         if has_wcs == 1:
-            print("   ✅ WCS disponibile!")
+            print("   WCS disponibile!")
             
-            # Mostra header WCS
+            # Show WCS header
             wcs_header = ds.attrs.get('wcs_header_dict', 'N/A')
             print(f"   WCS Header: {wcs_header}")
             
-            # Mostra commento
+            # Show comment
             wcs_comment = ds.attrs.get('has_wcs_comment', 'N/A')
             print(f"   Commento: {wcs_comment}")
             
         else:
-            print("   ⚠️  WCS non disponibile")
+            print("   WCS not available")
             wcs_comment = ds.attrs.get('has_wcs_comment', 'N/A')
-            print(f"   Motivo: {wcs_comment}")
+            print(f"   Reason: {wcs_comment}")
         
-        print(f"\n📋 Tutti gli Attributi:")
+        print(f"\nAll Attributes:")
         for key, value in ds.attrs.items():
             if isinstance(value, str) and len(value) > 100:
                 print(f"   {key}: {value[:100]}...")
             else:
                 print(f"   {key}: {value}")
         
-        # Informazioni coordinate
-        print(f"\n🗺️  Coordinate Disponibili:")
+        # Coordinates information
+        print(f"\nAvailable Coordinates:")
         for coord_name, coord_data in ds.coords.items():
             print(f"   {coord_name}:")
             print(f"     - Shape: {coord_data.shape}")
@@ -71,24 +71,24 @@ def check_wcs_info(file_path):
         ds.close()
         
     except Exception as e:
-        print(f"❌ Errore durante analisi: {e}")
+        print(f"Error during analysis: {e}")
 
 def main():
-    print("=== Verifica WCS in File NetCDF ===")
+    print("=== WCS Check in NetCDF File ===")
     
-    # Controlla file di output dell'esempio
+    # Check output file of the example
     output_file = "output/result.nc"
     
     if os.path.exists(output_file):
         check_wcs_info(output_file)
     else:
-        print(f"❌ File di output non trovato: {output_file}")
-        print("Esegui prima: python examples/simple_example.py")
+        print(f"Output file not found: {output_file}")
+        print("Run first: python examples/simple_example.py")
         
-        # Controlla se ci sono altri file NetCDF
+        # Check for other NetCDF files
         nc_files = list(Path(".").glob("**/*.nc"))
         if nc_files:
-            print(f"\n📁 File NetCDF trovati:")
+            print(f"\nFound NetCDF files:")
             for nc_file in nc_files:
                 print(f"   {nc_file}")
                 check_wcs_info(str(nc_file))
@@ -96,6 +96,11 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
 
 
 

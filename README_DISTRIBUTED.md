@@ -38,12 +38,12 @@ python examples/export_ascii_wcs.py
 ```
 
 ## Features
-- ✅ Local & Kubernetes processing
-- ✅ S3, GCS, Azure Blob storage
-- ✅ Dask distributed computing
-- ✅ Job orchestration
-- ✅ ASCII WCS export
-- ✅ NetCDF with georeferencing
+- Local & Kubernetes processing
+- S3, GCS, Azure Blob storage
+- Dask distributed computing
+- Job orchestration
+- ASCII WCS export
+- NetCDF with georeferencing
 
 ## Commands
 - `astrogea process` - Process CRISM files
@@ -51,7 +51,7 @@ python examples/export_ascii_wcs.py
 - `astrogea job` - Manage jobs
 - `astrogea cluster --dashboard` - Open dashboard
 
-**Ready to use!** 🚀
+**Ready to use!**
 
 
 

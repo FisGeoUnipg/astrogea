@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Esempio di esportazione in formato ASCII con coordinate WCS.
+Example of ASCII export with WCS coordinates.
 """
 
 import os
@@ -17,27 +17,27 @@ from astrogea.export import export_to_ascii_wcs, export_to_ascii_spectral, expor
 def main():
     print("=== Astrogea - Export ASCII WCS ===")
     
-    # 1. Configurazione
-    print("\n1. Configurazione...")
+    # 1. Configuration
+    print("\n1. Configuration...")
     config = create_config(Environment.LOCAL)
-    print(f"   Ambiente: {config.environment.value}")
+    print(f"   Environment: {config.environment.value}")
     
-    # 2. File di input
-    print("\n2. Preparazione file di input...")
+    # 2. Input files
+    print("\n2. Preparing input files...")
     input_sr = "data/frt00006fbd_07_sr164j_mtr3.hdr"
     input_if = "data/frt00006fbd_07_if164j_mtr3.hdr"
     netcdf_output = "output/result.nc"
     
-    # Verifica file di input
+    # Check input files
     if not os.path.exists(input_sr) or not os.path.exists(input_if):
-        print("   ❌ File di input non trovati!")
-        print("   Esegui prima: python examples/simple_example.py")
+        print("   Input files not found!")
+        print("   Run first: python examples/simple_example.py")
         return
     
-    # 3. Elaborazione (se necessario)
-    print("\n3. Elaborazione file CRISM...")
+    # 3. Processing (if needed)
+    print("\n3. CRISM file processing...")
     if not os.path.exists(netcdf_output):
-        print("   Elaborazione file...")
+        print("   Processing files...")
         os.makedirs("output", exist_ok=True)
         
         ds = process_crism_file(
@@ -46,9 +46,9 @@ def main():
             output_nc_path=netcdf_output,
             use_dask=True
         )
-        print("   ✅ Elaborazione completata!")
+        print("   Elaborazione completata!")
     else:
-        print("   ✅ File NetCDF già esistente!")
+        print("   File NetCDF già esistente!")
         import xarray as xr
         ds = xr.open_dataset(netcdf_output)
     
@@ -62,27 +62,27 @@ def main():
             dataset=ds,
             output_path=ascii_output1,
             variable='spectral_data',
-            wavelength_idx=10,  # Wavelength specifica
+            wavelength_idx=10,  # Specific wavelength
             include_coordinates=True
         )
-        print(f"   ✅ Export ASCII WCS: {ascii_output1}")
+        print(f"   Export ASCII WCS: {ascii_output1}")
     except Exception as e:
-        print(f"   ❌ Errore export ASCII WCS: {e}")
+        print(f"   Errore export ASCII WCS: {e}")
     
-    # Export 2: Spettro di un pixel specifico
+    # Export 2: Spectrum of a specific pixel
     ascii_output2 = "output/pixel_spectrum.txt"
     try:
         export_to_ascii_spectral(
             dataset=ds,
             output_path=ascii_output2,
             variable='spectral_data',
-            pixel_coords=(50, 50)  # Pixel centrale
+            pixel_coords=(50, 50)  # Central pixel
         )
-        print(f"   ✅ Export spettro pixel: {ascii_output2}")
+        print(f"   Export spettro pixel: {ascii_output2}")
     except Exception as e:
-        print(f"   ❌ Errore export spettro: {e}")
+        print(f"   Errore export spettro: {e}")
     
-    # Export 3: CSV con WCS
+    # Export 3: CSV with WCS
     csv_output = "output/spectral_data_wcs.csv"
     try:
         export_to_csv_wcs(
@@ -91,12 +91,12 @@ def main():
             variable='spectral_data',
             include_metadata=True
         )
-        print(f"   ✅ Export CSV WCS: {csv_output}")
+        print(f"   Export CSV WCS: {csv_output}")
     except Exception as e:
-        print(f"   ❌ Errore export CSV: {e}")
+        print(f"   Errore export CSV: {e}")
     
-    # 5. Verifica file creati
-    print("\n5. Verifica file creati...")
+    # 5. Verify created files
+    print("\n5. Verify created files...")
     output_files = [
         ascii_output1,
         ascii_output2, 
@@ -106,10 +106,10 @@ def main():
     for file_path in output_files:
         if os.path.exists(file_path):
             file_size = os.path.getsize(file_path) / 1024  # KB
-            print(f"   ✅ {file_path} ({file_size:.1f} KB)")
+            print(f"   {file_path} ({file_size:.1f} KB)")
             
-            # Mostra prime righe
-            print(f"      Prime righe:")
+            # Show first lines
+            print(f"      First lines:")
             with open(file_path, 'r') as f:
                 for i, line in enumerate(f):
                     if i < 5:
@@ -118,30 +118,35 @@ def main():
                         break
             print()
         else:
-            print(f"   ❌ {file_path} non creato")
+            print(f"   {file_path} not created")
     
-    # 6. Informazioni WCS
-    print("\n6. Informazioni WCS...")
+    # 6. WCS Information
+    print("\n6. WCS Information...")
     has_wcs = ds.attrs.get('has_wcs', 0)
     if has_wcs == 1:
-        print("   ✅ WCS disponibile nel dataset")
+        print("   WCS available in the dataset")
         wcs_header = ds.attrs.get('wcs_header_dict', 'N/A')
         print(f"   WCS Header: {wcs_header[:100]}...")
     else:
-        print("   ⚠️  WCS non disponibile")
-        print("   I file ASCII conterranno coordinate pixel invece di coordinate geografiche")
+        print("   WCS not available")
+        print("   ASCII files will contain pixel coordinates instead of geographic coordinates")
     
     ds.close()
-    print("\n=== Export Completato! ===")
+    print("\n=== Export Completed! ===")
     
-    # 7. Istruzioni per l'uso
-    print("\n📖 Come usare i file ASCII:")
-    print("   - spectral_data_wcs.txt: Dati con coordinate (line, sample, lat, lon, value)")
-    print("   - pixel_spectrum.txt: Spettro completo di un pixel (wavelength, value)")
-    print("   - spectral_data_wcs.csv: Dati in formato CSV per Excel/analisi")
+    # 7. Usage instructions
+    print("\nHow to use the ASCII files:")
+    print("   - spectral_data_wcs.txt: Data with coordinates (line, sample, lat, lon, value)")
+    print("   - pixel_spectrum.txt: Full spectrum of a pixel (wavelength, value)")
+    print("   - spectral_data_wcs.csv: Data in CSV format for Excel/analysis")
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
 
 
 

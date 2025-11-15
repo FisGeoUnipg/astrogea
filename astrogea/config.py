@@ -92,6 +92,8 @@ class KubernetesConfig:
         }
     })
     storage_class: str = ""
+    priority_class: str = ""
+    node_selector: Dict[str, str] = field(default_factory=lambda: {})
     pvc_size: str = "100Gi"
 
 class AstrogeaConfig:
@@ -313,6 +315,8 @@ class AstrogeaConfig:
                 'replicas': self.kubernetes.replicas,
                 'resources': self.kubernetes.resources,
                 'storage_class': self.kubernetes.storage_class,
+                'priority_class': self.kubernetes.priority_class,
+                'node_selector': self.kubernetes.node_selector,
                 'pvc_size': self.kubernetes.pvc_size
             }
         }

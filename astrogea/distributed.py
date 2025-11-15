@@ -261,6 +261,9 @@ class KubernetesJobManager:
         self.config = config
         self.namespace = config.get('namespace', 'astrogea')
         self.image = config.get('image', 'astrogea:latest')
+        self.storage_class = config.get('storage_class', '')
+        self.priority_class = config.get('priority_class', '')
+        self.node_selector = config.get('node_selector', {})
         
         try:
             from kubernetes import client, config as k8s_config
@@ -287,6 +290,61 @@ class KubernetesJobManager:
                              output_uri: str, processing_config: Dict[str, Any]) -> str:
         """Create Kubernetes job for processing."""
         
+        # Build pod spec
+        pod_spec = {
+            "containers": [{
+                "name": "astrogea-processor",
+                "image": self.image,
+                "command": ["python", "-m", "astrogea.worker"],
+                "args": [
+                    "--input-files", ",".join(file_uris),
+                    "--output", output_uri,
+                    "--config", "/opt/astrogea/config.yaml"
+                ],
+                "env": [
+                    {"name": "ASTROGEA_MODE", "value": "kubernetes"},
+                    {"name": "ASTROGEA_JOB_ID", "value": job_name}
+                ],
+                "resources": self.config.get('resources', {
+                    "requests": {"memory": "2Gi", "cpu": "1"},
+                    "limits": {"memory": "4Gi", "cpu": "2"}
+                }),
+                "volumeMounts": [
+                    {
+                        "name": "config-volume",
+                        "mountPath": "/opt/astrogea"
+                    },
+                    {
+                        "name": "data-volume",
+                        "mountPath": "/data"
+                    }
+                ]
+            }],
+            "volumes": [
+                {
+                    "name": "config-volume",
+                    "configMap": {
+                        "name": "astrogea-config"
+                    }
+                },
+                {
+                    "name": "data-volume",
+                    "persistentVolumeClaim": {
+                        "claimName": "astrogea-data-pvc"
+                    }
+                }
+            ],
+            "restartPolicy": "Never"
+        }
+        
+        # Add priority class if specified
+        if self.priority_class:
+            pod_spec["priorityClassName"] = self.priority_class
+        
+        # Add node selector if specified
+        if self.node_selector:
+            pod_spec["nodeSelector"] = self.node_selector
+        
         # Create job specification
         job_spec = {
             "apiVersion": "batch/v1",
@@ -297,51 +355,7 @@ class KubernetesJobManager:
             },
             "spec": {
                 "template": {
-                    "spec": {
-                        "containers": [{
-                            "name": "astrogea-processor",
-                            "image": self.image,
-                            "command": ["python", "-m", "astrogea.worker"],
-                            "args": [
-                                "--input-files", ",".join(file_uris),
-                                "--output", output_uri,
-                                "--config", "/opt/astrogea/config.yaml"
-                            ],
-                            "env": [
-                                {"name": "ASTROGEA_MODE", "value": "kubernetes"},
-                                {"name": "ASTROGEA_JOB_ID", "value": job_name}
-                            ],
-                            "resources": self.config.get('resources', {
-                                "requests": {"memory": "2Gi", "cpu": "1"},
-                                "limits": {"memory": "4Gi", "cpu": "2"}
-                            }),
-                            "volumeMounts": [
-                                {
-                                    "name": "config-volume",
-                                    "mountPath": "/opt/astrogea"
-                                },
-                                {
-                                    "name": "data-volume",
-                                    "mountPath": "/data"
-                                }
-                            ]
-                        }],
-                        "volumes": [
-                            {
-                                "name": "config-volume",
-                                "configMap": {
-                                    "name": "astrogea-config"
-                                }
-                            },
-                            {
-                                "name": "data-volume",
-                                "persistentVolumeClaim": {
-                                    "claimName": "astrogea-data-pvc"
-                                }
-                            }
-                        ],
-                        "restartPolicy": "Never"
-                    }
+                    "spec": pod_spec
                 },
                 "backoffLimit": 3
             }

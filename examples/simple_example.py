@@ -62,7 +62,7 @@ def main():
             use_dask=True  # Use Dask for parallel processing
         )
         
-        print("   ✅ Processing completed!")
+        print("   Processing completed!")
         print(f"   Dataset shape: {ds.dims}")
         print(f"   Variables: {list(ds.data_vars.keys())}")
         

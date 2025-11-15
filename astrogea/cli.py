@@ -47,7 +47,7 @@ def _handle_process(args):
     print(f"Environment: {args.env}")
     
     ds = process_crism_file(args.sr, args.ifile, args.out, use_dask=args.dask)
-    print(f"✅ File saved: {args.out}")
+    print(f"File saved: {args.out}")
     print(f"Dataset shape: {ds.dims}")
 
 def _handle_cluster(args):
@@ -81,7 +81,7 @@ def _handle_job(args):
         import json
         job_config = json.loads(args.submit)
         job_id = orchestrator.submit_job(**job_config)
-        print(f"✅ Job submitted: {job_id}")
+        print(f"Job submitted: {job_id}")
     
     if args.status:
         status = orchestrator.get_job_status(args.status)

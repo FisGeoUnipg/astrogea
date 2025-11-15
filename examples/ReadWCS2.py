@@ -13,15 +13,15 @@ import xarray as xr
 import matplotlib.pyplot as plt
 import warnings
 import traceback
-import ast # Per valutare il dizionario WCS dalla stringa (se usato)
+import ast # To evaluate the WCS dictionary from string (if used)
 
-# Importa librerie WCS (opzionale, per selezionare pixel/regioni tramite coords)
+# Import WCS libraries (optional, to select pixels/regions via coords)
 try:
     from astropy.wcs import WCS
     from astropy import units as u
     ASTROPY_AVAILABLE = True
 except ImportError:
-    print("ATTENZIONE: Libreria 'astropy' non trovata. Funzionalità WCS non disponibili.")
+    print("WARNING: 'astropy' library not found. WCS features not available.")
     ASTROPY_AVAILABLE = False
 
 # --- Helper Function for RGB Normalization ---

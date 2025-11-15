@@ -4,9 +4,18 @@ import xarray as xr
 import time
 import os
 import warnings
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple, Union
+from scipy.interpolate import interp1d
+from scipy.spatial import ConvexHull
 from .spectral_wrapper import SpectralArrayWrapper
 from .wcs_utils import parse_envi_map_info_list, create_wcs_from_parsed_info, create_wcs_header_dict
+
+# Optional Dask import
+try:
+    import dask.array as da
+    DASK_AVAILABLE = True
+except ImportError:
+    DASK_AVAILABLE = False
 
 def _setup_spectral_environment():
     """Setup spectral library environment to find data files"""
@@ -1011,3 +1020,460 @@ def hypermerge_spatial(cubes, use_dask: bool = False):
     else:
         da_out = xr.DataArray(merged)
     return _add_fake_wcs_attrs(da_out)
+
+
+# ============================================================================
+# Advanced Spectral Processing Functions (from autoencoder.py)
+# ============================================================================
+
+def row_wise_integral_norm_data(wav, spectra, use_dask=False):
+    """
+    Normalize each spectrum by its integral over wavelength (row-wise integral normalization).
+    
+    Args:
+        wav: Wavelength array
+        spectra: 2D array of spectra (n_spectra, n_wavelengths)
+        use_dask: If True, use Dask for parallel computation
+        
+    Returns:
+        Tuple of (normalized_spectra, wav)
+    """
+    if use_dask and DASK_AVAILABLE:
+        # Parallel version with Dask
+        spectra_da = da.from_array(spectra, chunks='auto')
+        # Compute integrals for each row using map_blocks
+        def compute_integral(block):
+            return np.array([np.trapz(row, wav) for row in block])
+        integrals = da.map_blocks(compute_integral, spectra_da, drop_axis=1, 
+                                  chunks=(spectra_da.chunks[0],))
+        integrals = integrals.compute()
+        SPECTRA = (spectra_da / integrals[:, None]).compute()
+    else:
+        # Original sequential version
+        SPECTRA = np.zeros_like(spectra)
+        for i in range(len(spectra[:, 0])):
+            SPECTRA[i] = spectra[i] / np.trapz(spectra[i], wav)
+        
+    return SPECTRA, wav
+
+
+def column_wise_norm_advanced(spectra, use_dask=False):
+    """
+    Advanced column-wise normalization with Dask support.
+    
+    Args:
+        spectra: 2D array of spectra (n_spectra, n_features)
+        use_dask: If True, use Dask for parallel computation
+        
+    Returns:
+        Normalized spectra
+    """
+    if use_dask and DASK_AVAILABLE:
+        # Parallel version with Dask
+        spectra_da = da.from_array(spectra, chunks='auto')
+        means = da.mean(spectra_da, axis=0)
+        stds = da.std(spectra_da, axis=0)
+        stds = da.where(stds == 0, 1, stds)  # Avoid division by zero
+        spectra_norm = ((spectra_da - means) / stds).compute()
+    else:
+        # Original sequential version
+        spectra_norm = np.zeros_like(spectra)
+        for i in range(len(spectra[0])):
+            mean_val = np.mean(spectra[:, i])
+            std_val = np.std(spectra[:, i])
+            if std_val == 0:
+                std_val = 1  # Avoid division by zero
+            spectra_norm[:, i] = (spectra[:, i] - mean_val) / std_val
+        
+    return spectra_norm
+
+
+def find_nearest_wavelength(array, value):
+    """
+    Find the index of the nearest value in an array.
+    
+    Args:
+        array: Array to search
+        value: Target value
+        
+    Returns:
+        Index of nearest value
+    """
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmin()
+    return idx
+
+
+def continuum_removal_points(points, interp_type='linear'):
+    """
+    Perform continuum removal on a single spectrum using convex hull method.
+    
+    Args:
+        points: 2D array of (wavelength, reflectance) points
+        interp_type: Interpolation type ('linear', 'nearest', 'cubic', etc.)
+        
+    Returns:
+        Continuum-removed reflectance values
+    """
+    interp_types = ['linear', 'nearest', 'nearest-up', 'zero', 'slinear', 
+                   'quadratic', 'cubic', 'previous', 'next']
+    
+    if interp_type not in interp_types:
+        raise ValueError(f'Interpolation type must be one of: {interp_types}')
+    
+    x, y = points.T
+    augmented = np.concatenate([points, [(x[0], np.min(y)-1), (x[-1], np.min(y)-1)]], axis=0)
+    hull = ConvexHull(augmented, incremental=True)
+    continuum_points = points[np.sort([v for v in hull.vertices if v < len(points)])]
+    continuum_function = interp1d(*continuum_points.T, kind=interp_type)
+    n = continuum_function(x)
+    
+    yprime = y / n
+    return yprime
+
+
+def compute_removal_single(w, spectra, interp_type='linear'):
+    """
+    Compute continuum removal for a single spectrum.
+    
+    Args:
+        w: Wavelength array
+        spectra: Single spectrum array
+        interp_type: Interpolation type
+        
+    Returns:
+        Continuum-removed spectrum
+    """
+    points = np.c_[w, spectra]
+    return continuum_removal_points(points, interp_type=interp_type)
+
+
+def compute_removal(w, spectra, interp_type='linear'):
+    """
+    Compute continuum removal for multiple spectra.
+    
+    Args:
+        w: Wavelength array
+        spectra: 2D array of spectra (n_spectra, n_wavelengths)
+        interp_type: Interpolation type
+        
+    Returns:
+        Continuum-removed spectra
+    """
+    SPECTRA = np.zeros(spectra.shape)
+    for i in range(spectra.shape[0]):
+        points = np.c_[w, spectra[i]]
+        SPECTRA[i] = continuum_removal_points(points, interp_type=interp_type)
+    return SPECTRA
+
+
+def dimension_reduction(img, w1, w2, wavelength, cr=False):
+    """
+    Extract spectra from image within a wavelength range, optionally with continuum removal.
+    
+    Args:
+        img: 3D image array (height, width, bands)
+        w1: Start wavelength
+        w2: End wavelength
+        wavelength: Wavelength array
+        cr: If True, apply continuum removal
+        
+    Returns:
+        Tuple of (spectra, indexes, w) where:
+        - spectra: Extracted spectra array
+        - indexes: Pixel coordinates (line, sample)
+        - w: Wavelength array for extracted range
+    """
+    X = img.shape[0]
+    Y = img.shape[1]
+    
+    a = find_nearest_wavelength(wavelength, w1)
+    b = find_nearest_wavelength(wavelength, w2)
+    w = wavelength[a:b]
+    lenw = len(w)
+    
+    A = np.count_nonzero(img[:, :, 0] == 65535.)
+    B = np.count_nonzero(img[:, :, 0] != 65535.)
+    
+    spectra = np.zeros((B, lenw))
+    indexes = np.zeros((B, 2))
+    
+    frame_indexes = np.zeros((A, 2))
+    img = img[:, :, a:b]
+    
+    k, i, j = 0, 0, 0
+    while k < B and i < X and j < Y:
+        if img[i, j, 0] != 65535. and not np.all(img[i, j, :] == np.zeros(lenw)):
+            if cr == False:
+                spectra[k, :] = img[i, j, :]
+            else:
+                spectra[k, :] = compute_removal_single(w, img[i, j, :])
+            indexes[k, 0] = i
+            indexes[k, 1] = j   
+            k += 1
+        if np.all(img[i, j, :] == np.zeros(lenw)):
+            warnings.warn(f"Zero spectrum at pixel ({i}, {j})")
+        i += 1
+        if i == X:
+            j += 1
+            i = 0
+            if j == Y:
+                i = X
+                j = Y
+                k = B
+                  
+    return spectra, indexes, w
+
+
+def dimension_reduction_spectral_parameters(img, norm=None, zeros=None, use_dask=False):
+    """
+    Extract spectra from image with optional normalization.
+    
+    Args:
+        img: 3D image array (height, width, bands)
+        norm: List of normalization methods ('row', 'column', 'minmax', 'L1') or 'none'
+        zeros: If not None, set negative values to zero
+        use_dask: If True, use Dask for parallel computation
+        
+    Returns:
+        Tuple of (spectra, indexes) where:
+        - spectra: Normalized spectra array
+        - indexes: Pixel coordinates (line, sample)
+    """
+    X = img.shape[0]
+    Y = img.shape[1]
+    lenw = img.shape[2]
+    
+    B = np.count_nonzero(img[:, :, 0] != 65535.)
+    
+    # Spectrum extraction (this part remains sequential to maintain indices)
+    spectra = np.zeros((B, lenw))
+    indexes = np.zeros((B, 2))
+    
+    k, i, j = 0, 0, 0
+    while k < B and i < X and j < Y:
+        if img[i, j, 0] != 65535.:
+            spectra[k, :] = img[i, j, :]
+            
+            if zeros is not None:
+                for l in range(len(spectra[k, :])):
+                    if spectra[k, l] < 0:
+                        spectra[k, l] = 0
+            
+            indexes[k, 0] = i
+            indexes[k, 1] = j   
+            k += 1
+        i += 1
+        if i == X:
+            j += 1
+            i = 0
+            if j == Y:
+                i = X
+                j = Y
+                k = B
+
+    if norm == 'none' or norm is None:
+        spectra = np.nan_to_num(spectra)
+        return spectra, indexes
+        
+    elif isinstance(norm, list) and len(norm) > 0:
+        # Convert to Dask array if requested and available
+        if use_dask and DASK_AVAILABLE:
+            spectra_da = da.from_array(spectra, chunks='auto')
+        else:
+            spectra_da = None
+        
+        for p in range(len(norm)):
+            if p != 0:
+                spectra = SPECTRA
+                if use_dask and DASK_AVAILABLE:
+                    spectra_da = da.from_array(spectra, chunks='auto')
+            
+            if use_dask and DASK_AVAILABLE and spectra_da is not None:
+                # Parallel version with Dask
+                if norm[p] == 'row':
+                    row_sums = da.sum(da.abs(spectra_da), axis=1, keepdims=True)
+                    row_sums = da.where(row_sums == 0, 1, row_sums)  # Avoid division by zero
+                    SPECTRA = (spectra_da / row_sums).compute()
+    
+                elif norm[p] == 'column':
+                    if zeros is not None:
+                        means = da.mean(spectra_da, axis=0)
+                        stds = da.std(spectra_da, axis=0)
+                        stds = da.where(stds == 0, 1, stds)  # Avoid division by zero
+                        SPECTRA = ((spectra_da - means) / stds).compute()
+                    else:
+                        # More complex version: compute mean/std only on values != 0
+                        SPECTRA = np.zeros_like(spectra)
+                        for i in range(len(spectra[0])):
+                            non_zero_mask = spectra[:, i] != 0
+                            if np.any(non_zero_mask):
+                                m, s = np.mean(spectra[non_zero_mask, i]), np.std(spectra[non_zero_mask, i])
+                                if s == 0:
+                                    s = 1
+                                SPECTRA[:, i] = (spectra[:, i] - m) / s
+    
+                elif norm[p] == 'minmax':
+                    mins = da.min(spectra_da, axis=0)
+                    maxs = da.max(spectra_da, axis=0)
+                    denom = maxs - mins
+                    denom = da.where(denom == 0, 1, denom)  # Avoid division by zero
+                    SPECTRA = ((spectra_da - mins) / denom).compute()
+    
+                elif norm[p] == 'L1':
+                    norms = da.linalg.norm(spectra_da, ord=1, axis=0, keepdims=True)
+                    norms = da.where(norms == 0, 1, norms)  # Avoid division by zero
+                    SPECTRA = (spectra_da / norms).compute()
+            else:
+                # Original sequential version
+                SPECTRA = np.zeros_like(spectra)
+                
+                if norm[p] == 'row':
+                    for i in range(len(spectra[:, 0])):
+                        SPECTRA[i] = spectra[i] / np.sum(abs(spectra[i]))
+        
+                elif norm[p] == 'column':
+                    for i in range(len(spectra[0])):
+                        if zeros is not None:
+                            mean_val = np.mean(spectra[:, i])
+                            std_val = np.std(spectra[:, i])
+                            if std_val == 0:
+                                std_val = 1  # Avoid division by zero
+                            SPECTRA[:, i] = (spectra[:, i] - mean_val) / std_val
+                        else:
+                            m, s = np.mean(spectra[np.argwhere(spectra[:, i] != 0), i]), np.std(spectra[np.argwhere(spectra[:, i] != 0), i])
+                            if s == 0:
+                                s = 1  # Avoid division by zero
+                            SPECTRA[:, i] = (spectra[:, i] - m) / s
+        
+                elif norm[p] == 'minmax':
+                    for i in range(len(spectra[0])):
+                        if zeros is not None:
+                            SPECTRA[:, i] = (spectra[:, i] - np.min(spectra[:, i])) / (np.max(spectra[:, i]) - np.min(spectra[:, i]))
+        
+                elif norm[p] == 'L1':
+                    for i in range(len(spectra[0])):
+                        if zeros is not None:
+                            SPECTRA[:, i] = spectra[:, i] / np.linalg.norm(spectra[:, i])
+                        
+            SPECTRA = np.nan_to_num(SPECTRA)
+
+        return SPECTRA, indexes
+
+    else:
+        raise ValueError('Normalization must be either a list of methods (row, column, minmax, L1) or "none"!')
+
+
+def auto_stretch_rgb_advanced(img_sr, product_names, n_bins=1000, plot=True, 
+                              linearize=False, norm=None, zeros=False):
+    """
+    Advanced auto-stretch RGB function with linearization and normalization options.
+    
+    Args:
+        img_sr: 3D image array (height, width, bands)
+        product_names: List of product names for each band
+        n_bins: Number of bins for histogram
+        plot: If True, plot histograms and stretched images
+        linearize: If True, return linearized spectra instead of cube
+        norm: List of normalization methods to apply if linearize=True
+        zeros: If True, set negative values to zero
+        
+    Returns:
+        If linearize=False: stretched_cube (3D array)
+        If linearize=True: (spectra, indexes) tuple
+    """
+    local_only_products = {
+        'R530', 'R440', 'R600', 'R770', 'R1080', 'R1506',
+        'R2529', 'R3920', 'SH600_2', 'IRA', 'ISLOPE1', 'IRR2'
+    }
+
+    H, W, num_bands = img_sr.shape
+    stretched_cube = np.zeros((H, W, num_bands), dtype=np.float32)
+
+    for band_idx in range(num_bands):
+        band = img_sr[:, :, band_idx]
+        name = product_names[band_idx]
+        valid = np.isfinite(band) & (band != 65535)
+        vals = band[valid]
+
+        if vals.size == 0:
+            continue
+
+        if name in local_only_products:
+            vmin, vmax = np.percentile(vals, [0.1, 99.9])
+        else:
+            hist, bins = np.histogram(vals, bins=n_bins)
+            mode = (bins[np.argmax(hist)] + bins[np.argmax(hist)+1]) / 2
+            vmin = 0 if mode < 0 else mode
+            vmax = np.percentile(vals, 99.9)
+
+        stretched = np.zeros_like(band, dtype=np.float32)
+        stretched[valid] = np.clip((band[valid] - vmin) / (vmax - vmin), 0, 1)
+        stretched_cube[:, :, band_idx] = stretched
+
+        if plot:
+            try:
+                import matplotlib.pyplot as plt
+                fig, ax = plt.subplots(1, 2, figsize=(10, 3))
+                ax[0].hist(vals, bins=n_bins, color='gray', log=True)
+                ax[0].axvline(vmin, color='blue', linestyle='--', label='vmin')
+                ax[0].axvline(vmax, color='red', linestyle='--', label='vmax')
+                ax[0].set_title(f"{name} Histogram")
+                ax[0].legend()
+                ax[0].set_xlim(np.percentile(vals, 0.5), np.percentile(vals, 99.9))
+
+                ax[1].imshow(stretched, cmap='gray', vmin=0, vmax=1)
+                ax[1].set_title(f"{name} Stretched")
+                ax[1].axis('off')
+                plt.tight_layout()
+                plt.show()
+            except ImportError:
+                warnings.warn("Matplotlib not available, skipping plots")
+
+    if not linearize:
+        return stretched_cube
+
+    # LINEARIZATION
+    valid_mask = img_sr[:, :, 0] != 65535
+    indexes = np.argwhere(valid_mask)
+    spectra = stretched_cube[valid_mask]  # shape: (N_valid, num_bands)
+
+    if zeros:
+        spectra[spectra < 0] = 0
+
+    if norm is None or norm == 'none':
+        return spectra, indexes
+
+    # Apply normalization chain
+    SPECTRA = spectra.copy()
+
+    for n in norm:
+        if n == 'row':
+            row_sums = np.sum(np.abs(SPECTRA), axis=1, keepdims=True)
+            row_sums[row_sums == 0] = 1
+            SPECTRA = SPECTRA / row_sums
+
+        elif n == 'column':
+            means = np.mean(SPECTRA, axis=0)
+            stds = np.std(SPECTRA, axis=0)
+            stds[stds == 0] = 1
+            SPECTRA = (SPECTRA - means) / stds
+
+        elif n == 'minmax':
+            mins = np.min(SPECTRA, axis=0)
+            maxs = np.max(SPECTRA, axis=0)
+            denom = maxs - mins
+            denom[denom == 0] = 1
+            SPECTRA = (SPECTRA - mins) / denom
+
+        elif n == 'L1':
+            norms = np.linalg.norm(SPECTRA, ord=1, axis=0)
+            norms[norms == 0] = 1
+            SPECTRA = SPECTRA / norms
+
+        else:
+            warnings.warn(f"Unknown norm: {n}")
+
+    SPECTRA = np.nan_to_num(SPECTRA)
+
+    return SPECTRA, indexes
