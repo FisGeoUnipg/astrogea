@@ -28,115 +28,124 @@ except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
 
-class GumbelSoftmax(nn.Module):
-    """
-    Gumbel-Softmax activation layer for differentiable sampling.
-    
-    Args:
-        temperature: Temperature parameter for Gumbel-Softmax
-        hard: If True, use hard Gumbel-Softmax (one-hot)
-    """
-    def __init__(self, temperature=1.0, hard=False):
-        if not TORCH_AVAILABLE:
-            raise ImportError("PyTorch is required for GumbelSoftmax. Install with: pip install torch")
-        super(GumbelSoftmax, self).__init__()
-        self.temperature = temperature
-        self.hard = hard
+# Define classes only if PyTorch is available
+if TORCH_AVAILABLE:
+    class GumbelSoftmax(nn.Module):
+        """
+        Gumbel-Softmax activation layer for differentiable sampling.
+        
+        Args:
+            temperature: Temperature parameter for Gumbel-Softmax
+            hard: If True, use hard Gumbel-Softmax (one-hot)
+        """
+        def __init__(self, temperature=1.0, hard=False):
+            super(GumbelSoftmax, self).__init__()
+            self.temperature = temperature
+            self.hard = hard
 
-    def forward(self, x):
-        return F.gumbel_softmax(x, tau=self.temperature, hard=self.hard)
+        def forward(self, x):
+            return F.gumbel_softmax(x, tau=self.temperature, hard=self.hard)
 
 
-class SpectralAutoencoder(nn.Module):
-    """
-    Autoencoder neural network for spectral data dimensionality reduction.
-    
-    Args:
-        encoded_space_dim: Dimension of the encoded space
-        in_channels: Number of input spectral bands
-        n_layers_encoder: Number of encoder layers
-        n_layers_decoder: Number of decoder layers
-        out1: List of output dimensions for encoder layers
-        out2: List of output dimensions for decoder layers
-        act: Activation function
-        drops: List of dropout values for each layer
-        last: Unused parameter (kept for compatibility)
-    """
-    def __init__(self, encoded_space_dim, in_channels, n_layers_encoder, n_layers_decoder, 
-                 out1, out2, act, drops, last):
-        if not TORCH_AVAILABLE:
-            raise ImportError("PyTorch is required for SpectralAutoencoder. Install with: pip install torch")
-        super(SpectralAutoencoder, self).__init__()
+    class SpectralAutoencoder(nn.Module):
+        """
+        Autoencoder neural network for spectral data dimensionality reduction.
+        
+        Args:
+            encoded_space_dim: Dimension of the encoded space
+            in_channels: Number of input spectral bands
+            n_layers_encoder: Number of encoder layers
+            n_layers_decoder: Number of decoder layers
+            out1: List of output dimensions for encoder layers
+            out2: List of output dimensions for decoder layers
+            act: Activation function
+            drops: List of dropout values for each layer
+            last: Unused parameter (kept for compatibility)
+        """
+        def __init__(self, encoded_space_dim, in_channels, n_layers_encoder, n_layers_decoder, 
+                     out1, out2, act, drops, last):
+            super(SpectralAutoencoder, self).__init__()
 
-        self.encoded_space_dim = encoded_space_dim
-        self.in_channels = in_channels
-        self.n_layers_encoder = n_layers_encoder
-        self.n_layers_decoder = n_layers_decoder
-        self.out1 = out1
-        self.out2 = out2
-        self.drops = drops
-    
-        self.model = []
-        if self.n_layers_encoder == 1:
-            self.model.append(nn.Linear(self.in_channels, self.out1[0]))
-            self.model.append(nn.BatchNorm1d(self.out1[0]))
-            self.model.append(act)
-            self.model.append(nn.Dropout(self.drops[0]))
-            self.model.append(nn.Linear(self.out1[0], encoded_space_dim))
+            self.encoded_space_dim = encoded_space_dim
+            self.in_channels = in_channels
+            self.n_layers_encoder = n_layers_encoder
+            self.n_layers_decoder = n_layers_decoder
+            self.out1 = out1
+            self.out2 = out2
+            self.drops = drops
+        
+            self.model = []
+            if self.n_layers_encoder == 1:
+                self.model.append(nn.Linear(self.in_channels, self.out1[0]))
+                self.model.append(nn.BatchNorm1d(self.out1[0]))
+                self.model.append(act)
+                self.model.append(nn.Dropout(self.drops[0]))
+                self.model.append(nn.Linear(self.out1[0], encoded_space_dim))
+                
+            elif self.n_layers_encoder == 0:
+                self.model.append(nn.Linear(self.in_channels, encoded_space_dim))
+                self.model.append(act)
+            else:
+                for i in range(self.n_layers_encoder):
+                    if i == self.n_layers_encoder-1:
+                        self.model.append(nn.Linear(self.out1[i], self.encoded_space_dim))
+                    elif i == 0:
+                        self.model.append(nn.Linear(self.in_channels, self.out1[i]))
+                        self.model.append(nn.BatchNorm1d(self.out1[i]))
+                        self.model.append(nn.Dropout(self.drops[i]))
+                        self.model.append(act)
+                        self.model.append(nn.Linear(self.out1[i], self.out1[i+1]))
+                        self.model.append(nn.Dropout(self.drops[i+1]))
+                        self.model.append(act)
+                    else:   
+                        self.model.append(nn.Linear(self.out1[i], self.out1[i+1]))
+                        self.model.append(nn.BatchNorm1d(self.out1[i+1]))
+                        self.model.append(nn.Dropout(self.drops[i+1]))
+                        self.model.append(act)
+                        
+            # Add GumbelSoftmax to nn.Sequential
+            self.encoder = nn.Sequential(*self.model, GumbelSoftmax(temperature=1.0, hard=True))
             
-        elif self.n_layers_encoder == 0:
-            self.model.append(nn.Linear(self.in_channels, encoded_space_dim))
-            self.model.append(act)
-        else:
-            for i in range(self.n_layers_encoder):
-                if i == self.n_layers_encoder-1:
-                    self.model.append(nn.Linear(self.out1[i], self.encoded_space_dim))
-                elif i == 0:
-                    self.model.append(nn.Linear(self.in_channels, self.out1[i]))
-                    self.model.append(nn.BatchNorm1d(self.out1[i]))
-                    self.model.append(nn.Dropout(self.drops[i]))
-                    self.model.append(act)
-                    self.model.append(nn.Linear(self.out1[i], self.out1[i+1]))
-                    self.model.append(nn.Dropout(self.drops[i+1]))
-                    self.model.append(act)
-                else:   
-                    self.model.append(nn.Linear(self.out1[i], self.out1[i+1]))
-                    self.model.append(nn.BatchNorm1d(self.out1[i+1]))
-                    self.model.append(nn.Dropout(self.drops[i+1]))
-                    self.model.append(act)
-                    
-        # Add GumbelSoftmax to nn.Sequential
-        self.encoder = nn.Sequential(*self.model, GumbelSoftmax(temperature=1.0, hard=True))
-        
-        self.model2 = []
-        
-        if self.n_layers_decoder == 0:
-            self.model2.append(nn.Linear(self.encoded_space_dim, self.in_channels))
-        elif self.n_layers_decoder == 1:
-            self.model2.append(nn.Linear(self.encoded_space_dim, self.out2[0]))
-            self.model2.append(act)
-            self.model2.append(nn.Linear(self.out2[0], self.in_channels))
-        else:
-            self.model2.append(nn.Linear(self.encoded_space_dim, self.out2[0]))
-            self.model2.append(act)
-            for i in range(self.n_layers_decoder-1):
-                self.model2.append(nn.Linear(self.out2[i], self.out2[i+1]))
+            self.model2 = []
+            
+            if self.n_layers_decoder == 0:
+                self.model2.append(nn.Linear(self.encoded_space_dim, self.in_channels))
+            elif self.n_layers_decoder == 1:
+                self.model2.append(nn.Linear(self.encoded_space_dim, self.out2[0]))
                 self.model2.append(act)
-            self.model2.append(nn.Linear(self.out2[self.n_layers_decoder-1], self.in_channels))
-            self.model2.append(nn.Tanh())
-        self.decoder = nn.Sequential(*self.model2)
+                self.model2.append(nn.Linear(self.out2[0], self.in_channels))
+            else:
+                self.model2.append(nn.Linear(self.encoded_space_dim, self.out2[0]))
+                self.model2.append(act)
+                for i in range(self.n_layers_decoder-1):
+                    self.model2.append(nn.Linear(self.out2[i], self.out2[i+1]))
+                    self.model2.append(act)
+                self.model2.append(nn.Linear(self.out2[self.n_layers_decoder-1], self.in_channels))
+                self.model2.append(nn.Tanh())
+            self.decoder = nn.Sequential(*self.model2)
+        
+        def forward(self, x):
+            x = self.encoder(x)
+            x = self.decoder(x)
+            return x
+
+
+    # Alias for backward compatibility
+    Net = SpectralAutoencoder
+else:
+    # Stub classes when PyTorch is not available
+    class GumbelSoftmax:
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required for GumbelSoftmax. Install with: pip install torch")
     
-    def forward(self, x):
-        x = self.encoder(x)
-        x = self.decoder(x)
-        return x
+    class SpectralAutoencoder:
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch is required for SpectralAutoencoder. Install with: pip install torch")
+    
+    Net = SpectralAutoencoder
 
 
-# Alias for backward compatibility
-Net = SpectralAutoencoder
-
-
-def weight_init(model: nn.Module, init_method: str):
+def weight_init(model, init_method: str):
     """
     Initialize weights of a neural network model.
     

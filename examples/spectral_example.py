@@ -67,8 +67,8 @@ def main():
     
     # 1. Load ENVI file directly from .img file
     print("\n1. Loading ENVI file from .img file...")
-    img_file = "data/frt00006fbd_07_sr164j_mtr3.img"
-    hdr_file = "data/frt00006fbd_07_sr164j_mtr3.hdr"
+    img_file = "data/frt00006fbd_07_if164j_mtr3.img"
+    hdr_file = "data/frt00006fbd_07_if164j_mtr3.hdr"
     
     if not os.path.exists(img_file):
         print(f"   ERROR: Image file not found: {img_file}")
@@ -78,21 +78,68 @@ def main():
     try:
         # Read metadata from .hdr file if available
         metadata = {}
+        wavelength = None
+        wavelength_units = None
+        
         if os.path.exists(hdr_file):
             print(f"   Reading metadata from {hdr_file}...")
             with open(hdr_file, 'r') as f:
-                for line in f:
-                    line = line.strip()
+                lines_list = f.readlines()
+                i = 0
+                while i < len(lines_list):
+                    line = lines_list[i].strip()
                     if '=' in line:
                         key, value = line.split('=', 1)
                         key = key.strip()
                         value = value.strip()
-                        metadata[key.lower()] = value
+                        
+                        # Handle wavelength multiline block
+                        if key.lower() == 'wavelength' and value.startswith('{'):
+                            # Collect all wavelength values until closing brace
+                            wavelength_str = value
+                            if not value.endswith('}'):
+                                # Multiline block: read until closing brace
+                                i += 1
+                                while i < len(lines_list) and '}' not in wavelength_str:
+                                    wavelength_str += ' ' + lines_list[i].strip()
+                                    i += 1
+                                # i now points to the line with closing brace, increment to move past it
+                                i += 1
+                            else:
+                                # Single-line block: just increment to next line
+                                i += 1
+                            # Extract numeric values
+                            try:
+                                # Remove braces and split by comma
+                                wav_values = wavelength_str.strip('{}').replace(',', ' ').split()
+                                wavelength = np.array([float(w) for w in wav_values if w.strip()])
+                                print(f"   Found {len(wavelength)} wavelength values in header")
+                            except Exception as e:
+                                print(f"   Warning: Could not parse wavelength values: {e}")
+                                wavelength = None
+                            metadata[key.lower()] = wavelength_str
+                        else:
+                            metadata[key.lower()] = value
+                            print(line)
+                            i += 1
+                    else:
+                        i += 1
+                
+                # Get wavelength units if available
+                wavelength_units = metadata.get('wavelength units', 'Unknown').lower()
+                if wavelength is not None:
+                    # Convert units if needed (Nanometers to Micrometers)
+                    if 'nanometer' in wavelength_units or 'nm' in wavelength_units:
+                        wavelength = wavelength / 1000.0  # Convert nm to um
+                        print(f"   Converted wavelength units from Nanometers to Micrometers")
+                    elif 'micrometer' in wavelength_units or 'um' in wavelength_units:
+                        pass  # Already in micrometers
+                    print(f"   Wavelength units: {metadata.get('wavelength units', 'Unknown')}")
         
         # Get dimensions from metadata or use defaults
         lines = int(metadata.get('lines', 588))
         samples = int(metadata.get('samples', 729))
-        bands = int(metadata.get('bands', 60))
+        bands = int(metadata.get('bands', 489))
         
         # Get data type from metadata
         dtype_map = {
@@ -144,26 +191,32 @@ def main():
         print(f"   Final array shape: {img_array.shape}")
         print(f"   Data type: {img_array.dtype}")
         
-        # Extract wavelengths from metadata or use defaults
-        wavelength = None
-        if 'wavelength' in metadata:
-            # Wavelength might be stored as a list in the header
-            try:
-                # Try to parse wavelength values
-                wav_str = metadata['wavelength'].strip('{}')
-                wavelength = np.array([float(w) for w in wav_str.split(',')])
-            except:
-                wavelength = np.linspace(1.0, 2.5, bands)
-        else:
+        # Use extracted wavelengths or create defaults
+        if wavelength is None:
+            print("   No wavelength data found in header, using default wavelength range...")
             wavelength = np.linspace(1.0, 2.5, bands)
+        elif len(wavelength) != bands:
+            print(f"   Warning: Wavelength array length ({len(wavelength)}) doesn't match bands ({bands})")
+            if len(wavelength) > bands:
+                wavelength = wavelength[:bands]
+                print(f"   Truncated wavelength array to {bands} bands")
+            elif len(wavelength) < bands:
+                # Extend with linear interpolation
+                print(f"   Extending wavelength array from {len(wavelength)} to {bands} bands")
+                wavelength = np.linspace(wavelength[0], wavelength[-1], bands)
         
         print(f"   Number of spectral bands: {bands}")
-        print(f"   Wavelength range: {wavelength[0]:.2f} - {wavelength[-1]:.2f} um")
-        print("   (Using default wavelengths)")
+        print(f"   Wavelength range: {wavelength[0]:.4f} - {wavelength[-1]:.4f} um")
+        if wavelength_units and wavelength_units != 'unknown':
+            print(f"   Wavelength loaded from header file (units: {metadata.get('wavelength units', 'Unknown')})")
+        else:
+            print("   (Using default wavelengths)")
         
         # Convert to float32 for processing
         if img_array.dtype != np.float32:
             img_array = img_array.astype(np.float32)
+
+        print('IMPORTANT - ' , np.shape(img_array))
             
     except Exception as e:
         print(f"   ERROR loading file: {e}")
@@ -171,17 +224,19 @@ def main():
         traceback.print_exc()
         return
     
-    # 2. Test dimension_reduction_spectral_parameters
-    print("\n2. Testing dimension_reduction_spectral_parameters...")
-    print("   Extracting spectra with column normalization...")
+    # 2. Test dimension_reduction with wavelength range
+    print("\n2. Testing dimension_reduction with wavelength range...")
+    print("   Extracting spectra in wavelength range 0.5 - 2.5 um (500-2500 nm)...")
     start_time = time.time()
     
     try:
-        spectra, indexes = dimension_reduction_spectral_parameters(
+        # Convert nm to um: 500 nm = 0.5 um, 2500 nm = 2.5 um
+        w1, w2 = 0.5, 2.5  # um
+        spectra, indexes, red_w = dimension_reduction(
             img_array,
-            norm=['column'],
-            zeros=True,
-            use_dask=False  # Set to True if you have Dask installed
+            w1, w2,
+            wavelength,
+            cr=False  # Set to True to apply continuum removal
         )
         elapsed = time.time() - start_time
         print(f"   [OK] Extraction completed in {elapsed:.2f} seconds")
@@ -189,6 +244,8 @@ def main():
         print(f"   Each spectrum has {spectra.shape[1]} bands")
         print(f"   Spectra shape: {spectra.shape}")
         print(f"   Indexes shape: {indexes.shape}")
+        print(f"   Wavelength range: {red_w[0]:.4f} - {red_w[-1]:.4f} um")
+        print(f"   Number of bands: {len(red_w)}")
         
     except Exception as e:
         print(f"   ERROR: {e}")
@@ -205,7 +262,8 @@ def main():
         # Use a subset for faster testing
         n_samples = min(1000, spectra.shape[0])
         test_spectra = spectra[:n_samples]
-        test_wavelength = wavelength[:test_spectra.shape[1]]
+        # Use the reduced wavelength array from dimension_reduction
+        test_wavelength = red_w
         
         norm_spectra, wav = row_wise_integral_norm_data(
             test_wavelength,
@@ -289,33 +347,9 @@ def main():
         import traceback
         traceback.print_exc()
     
-    # 7. Test dimension_reduction with wavelength range
-    print("\n7. Testing dimension_reduction with wavelength range...")
-    print("   Extracting spectra in wavelength range 1.2 - 1.8 um...")
-    start_time = time.time()
-    
-    try:
-        w1, w2 = 1.2, 1.8  # um
-        red_spectra, red_indexes, red_w = dimension_reduction(
-            img_array,
-            w1, w2,
-            wavelength,
-            cr=False  # Set to True to apply continuum removal
-        )
-        elapsed = time.time() - start_time
-        print(f"   [OK] Dimension reduction completed in {elapsed:.2f} seconds")
-        print(f"   Extracted {red_spectra.shape[0]} spectra")
-        print(f"   Wavelength range: {red_w[0]:.4f} - {red_w[-1]:.4f} um")
-        print(f"   Number of bands: {len(red_w)}")
-        
-    except Exception as e:
-        print(f"   ERROR: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    # 8. Test ML functions (if available)
+    # 7. Test ML functions (if available)
     if ML_AVAILABLE:
-        print("\n8. Testing ML functions...")
+        print("\n7. Testing ML functions...")
         print("   Creating PyTorch dataset and testing autoencoder...")
         
         try:
@@ -372,12 +406,12 @@ def main():
             import traceback
             traceback.print_exc()
     else:
-        print("\n8. ML functions not available (PyTorch not installed)")
+        print("\n7. ML functions not available (PyTorch not installed)")
         print("   Install with: pip install torch")
     
-    # 9. Create visualizations
+    # 8. Create visualizations
     if MATPLOTLIB_AVAILABLE:
-        print("\n9. Creating visualizations...")
+        print("\n8. Creating visualizations...")
         try:
             # Create output directory for plots
             plot_dir = Path("output_plots")
@@ -389,11 +423,11 @@ def main():
             fig, ax = plt.subplots(figsize=(12, 6))
             for i in range(n_plot_samples):
                 idx = i * (spectra.shape[0] // n_plot_samples)
-                ax.plot(wavelength, spectra[idx, :], 
+                ax.plot(red_w, spectra[idx, :], 
                        label=f'Spectrum {idx+1}', alpha=0.7, linewidth=1.5)
             ax.set_xlabel('Wavelength (um)', fontsize=12)
             ax.set_ylabel('Reflectance (normalized)', fontsize=12)
-            ax.set_title('Sample Original Spectra (Column Normalized)', fontsize=14, fontweight='bold')
+            ax.set_title('Sample Original Spectra (Wavelength Range 0.5-2.5 um)', fontsize=14, fontweight='bold')
             ax.legend(loc='best', fontsize=8)
             ax.grid(True, alpha=0.3)
             plt.tight_layout()
@@ -407,32 +441,32 @@ def main():
             fig, axes = plt.subplots(2, 2, figsize=(14, 10))
             
             # Original spectrum
-            axes[0, 0].plot(wavelength, test_spectra[sample_idx, :], 'b-', linewidth=2)
+            axes[0, 0].plot(test_wavelength, test_spectra[sample_idx, :], 'b-', linewidth=2)
             axes[0, 0].set_title('Original Spectrum', fontweight='bold')
             axes[0, 0].set_xlabel('Wavelength (um)')
             axes[0, 0].set_ylabel('Reflectance')
             axes[0, 0].grid(True, alpha=0.3)
             
             # Row-wise integral normalized
-            axes[0, 1].plot(wavelength, norm_spectra[sample_idx, :], 'g-', linewidth=2)
+            axes[0, 1].plot(test_wavelength, norm_spectra[sample_idx, :], 'g-', linewidth=2)
             axes[0, 1].set_title('Row-wise Integral Normalized', fontweight='bold')
             axes[0, 1].set_xlabel('Wavelength (um)')
             axes[0, 1].set_ylabel('Normalized Reflectance')
             axes[0, 1].grid(True, alpha=0.3)
             
             # Column normalized
-            axes[1, 0].plot(wavelength, col_norm_spectra[sample_idx, :], 'r-', linewidth=2)
+            axes[1, 0].plot(test_wavelength, col_norm_spectra[sample_idx, :], 'r-', linewidth=2)
             axes[1, 0].set_title('Column Normalized', fontweight='bold')
             axes[1, 0].set_xlabel('Wavelength (um)')
             axes[1, 0].set_ylabel('Normalized Reflectance')
             axes[1, 0].grid(True, alpha=0.3)
             
             # Comparison overlay
-            axes[1, 1].plot(wavelength, test_spectra[sample_idx, :], 'b-', 
+            axes[1, 1].plot(test_wavelength, test_spectra[sample_idx, :], 'b-', 
                            label='Original', alpha=0.5, linewidth=1.5)
-            axes[1, 1].plot(wavelength, norm_spectra[sample_idx, :], 'g-', 
+            axes[1, 1].plot(test_wavelength, norm_spectra[sample_idx, :], 'g-', 
                            label='Row Integral Norm', alpha=0.7, linewidth=1.5)
-            axes[1, 1].plot(wavelength, col_norm_spectra[sample_idx, :], 'r-', 
+            axes[1, 1].plot(test_wavelength, col_norm_spectra[sample_idx, :], 'r-', 
                            label='Column Norm', alpha=0.7, linewidth=1.5)
             axes[1, 1].set_title('Normalization Comparison', fontweight='bold')
             axes[1, 1].set_xlabel('Wavelength (um)')
@@ -480,11 +514,11 @@ def main():
             fig, axes = plt.subplots(1, 2, figsize=(14, 6))
             
             # Full spectrum vs reduced range
-            sample_idx_red = min(100, red_spectra.shape[0] - 1)
-            axes[0].plot(wavelength, img_array[int(red_indexes[sample_idx_red, 0]), 
-                                              int(red_indexes[sample_idx_red, 1]), :], 
+            sample_idx_red = min(100, spectra.shape[0] - 1)
+            axes[0].plot(wavelength, img_array[int(indexes[sample_idx_red, 0]), 
+                                              int(indexes[sample_idx_red, 1]), :], 
                         'b-', label='Full Spectrum', linewidth=2, alpha=0.7)
-            axes[0].plot(red_w, red_spectra[sample_idx_red, :], 'r-', 
+            axes[0].plot(red_w, spectra[sample_idx_red, :], 'r-', 
                         label=f'Reduced Range ({w1}-{w2} um)', linewidth=2, alpha=0.7)
             axes[0].axvspan(w1, w2, alpha=0.2, color='yellow', label='Selected Range')
             axes[0].set_title('Dimension Reduction - Wavelength Range Selection', fontweight='bold')
@@ -494,10 +528,10 @@ def main():
             axes[0].grid(True, alpha=0.3)
             
             # Multiple reduced spectra
-            n_red_plot = min(10, red_spectra.shape[0])
+            n_red_plot = min(10, spectra.shape[0])
             for i in range(n_red_plot):
-                idx = i * (red_spectra.shape[0] // n_red_plot)
-                axes[1].plot(red_w, red_spectra[idx, :], alpha=0.6, linewidth=1.5)
+                idx = i * (spectra.shape[0] // n_red_plot)
+                axes[1].plot(red_w, spectra[idx, :], alpha=0.6, linewidth=1.5)
             axes[1].set_title(f'Sample Reduced Spectra ({len(red_w)} bands)', fontweight='bold')
             axes[1].set_xlabel('Wavelength (um)')
             axes[1].set_ylabel('Reflectance')
@@ -512,11 +546,11 @@ def main():
             print("   Plotting statistics overview...")
             fig, axes = plt.subplots(2, 2, figsize=(14, 10))
             
-            # Mean spectrum
+            # Mean spectrum (axis=0 means average across spectra for each wavelength band)
             mean_spectrum = np.mean(spectra, axis=0)
             std_spectrum = np.std(spectra, axis=0)
-            axes[0, 0].plot(wavelength, mean_spectrum, 'b-', linewidth=2, label='Mean')
-            axes[0, 0].fill_between(wavelength, mean_spectrum - std_spectrum, 
+            axes[0, 0].plot(red_w, mean_spectrum, 'b-', linewidth=2, label='Mean')
+            axes[0, 0].fill_between(red_w, mean_spectrum - std_spectrum, 
                                    mean_spectrum + std_spectrum, alpha=0.3, label='+/-1 Std')
             axes[0, 0].set_title('Mean Spectrum with Standard Deviation', fontweight='bold')
             axes[0, 0].set_xlabel('Wavelength (um)')
@@ -525,9 +559,11 @@ def main():
             axes[0, 0].grid(True, alpha=0.3)
             
             # Reflectance distribution at selected wavelengths
-            selected_wav_idx = [10, 20, 30, 40, 50]
+            n_bands = spectra.shape[1]
+            selected_wav_idx = [int(i * n_bands / 5) for i in range(1, 6)]  # 5 evenly spaced indices
+            selected_wav_idx = [idx for idx in selected_wav_idx if idx < n_bands]  # Ensure valid indices
             axes[0, 1].hist([spectra[:, idx] for idx in selected_wav_idx], 
-                           bins=50, alpha=0.6, label=[f'{wavelength[idx]:.2f} um' 
+                           bins=50, alpha=0.6, label=[f'{red_w[idx]:.2f} um' 
                                                       for idx in selected_wav_idx])
             axes[0, 1].set_title('Reflectance Distribution at Selected Wavelengths', fontweight='bold')
             axes[0, 1].set_xlabel('Reflectance')
@@ -544,10 +580,10 @@ def main():
             axes[1, 0].set_xlabel('Spectrum Index')
             axes[1, 0].set_ylabel('Wavelength Band')
             # Set y-axis ticks to show wavelength values
-            n_ticks = 10
-            tick_positions = np.linspace(0, len(wavelength)-1, n_ticks).astype(int)
+            n_ticks = min(10, len(red_w))
+            tick_positions = np.linspace(0, len(red_w)-1, n_ticks).astype(int)
             axes[1, 0].set_yticks(tick_positions)
-            axes[1, 0].set_yticklabels([f'{wavelength[i]:.2f}' for i in tick_positions])
+            axes[1, 0].set_yticklabels([f'{red_w[i]:.2f}' for i in tick_positions])
             plt.colorbar(im, ax=axes[1, 0], label='Reflectance')
             
             # Statistics summary
@@ -556,7 +592,7 @@ def main():
 Statistics Summary:
 - Total spectra: {spectra.shape[0]:,}
 - Spectral bands: {spectra.shape[1]}
-- Wavelength range: {wavelength[0]:.2f} - {wavelength[-1]:.2f} um
+- Wavelength range: {red_w[0]:.2f} - {red_w[-1]:.2f} um
 - Mean reflectance: {np.mean(spectra):.4f}
 - Std reflectance: {np.std(spectra):.4f}
 - Min reflectance: {np.min(spectra):.4f}
@@ -580,10 +616,10 @@ Statistics Summary:
             import traceback
             traceback.print_exc()
     else:
-        print("\n9. Visualization skipped (Matplotlib not available)")
+        print("\n8. Visualization skipped (Matplotlib not available)")
         print("   Install with: pip install matplotlib")
     
-    # 10. Summary
+    # 9. Summary
     print("\n" + "=" * 70)
     print("Summary")
     print("=" * 70)
